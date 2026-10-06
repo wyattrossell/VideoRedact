@@ -25,6 +25,15 @@ def new_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
+def as_enum(cls, v):
+    """Coerce a value to enum `cls` (None stays None). Qt hands str-based enums
+    back from QComboBox.itemData() as plain str, so every UI entry point and the
+    serializer go through this."""
+    if v is None or isinstance(v, cls):
+        return v
+    return cls(v)
+
+
 class AudioStyle(str, Enum):
     BEEP = "beep"          # 1 kHz tone (frequency configurable)
     SILENCE = "silence"
@@ -93,7 +102,8 @@ class AudioRedaction:
 
     def to_dict(self) -> dict:
         d = asdict(self)
-        d["style"] = self.style.value if self.style else None
+        st = as_enum(AudioStyle, self.style)
+        d["style"] = st.value if st else None
         return d
 
     @staticmethod
@@ -301,9 +311,10 @@ class VideoTrack:
         self.spans = merged
 
     def to_dict(self) -> dict:
+        st = as_enum(VideoStyle, self.style)
         return {
-            "id": self.id, "label": self.label, "style": self.style.value if self.style else None,
-            "shape": self.shape.value, "pad": self.pad, "source": self.source,
+            "id": self.id, "label": self.label, "style": st.value if st else None,
+            "shape": as_enum(Shape, self.shape).value, "pad": self.pad, "source": self.source,
             "enabled": self.enabled, "created_at": self.created_at,
             "created_by": self.created_by, "note": self.note,
             "spans": [s.to_dict() for s in self.spans],
@@ -435,8 +446,8 @@ class Project:
             "transcript_model": self.transcript_model,
             "audio_redactions": [r.to_dict() for r in self.audio_redactions],
             "video_tracks": [t.to_dict() for t in self.video_tracks],
-            "default_audio_style": self.default_audio_style.value,
-            "default_video_style": self.default_video_style.value,
+            "default_audio_style": as_enum(AudioStyle, self.default_audio_style).value,
+            "default_video_style": as_enum(VideoStyle, self.default_video_style).value,
             "beep_frequency": self.beep_frequency,
             "author": self.author,
             "case_number": self.case_number,

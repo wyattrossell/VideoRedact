@@ -12,7 +12,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from .model import BBox, Shape, VideoStyle, VideoTrack
+from .model import BBox, Shape, VideoStyle, VideoTrack, as_enum
 
 PIXELATE_BLOCKS = 8     # blocks across the box's shorter side
 BLUR_FRACTION = 0.25    # kernel size as fraction of the box's shorter side
@@ -47,6 +47,8 @@ def apply_box(frame: np.ndarray, bbox: BBox, style: VideoStyle, shape: Shape = S
     x0, y0, x1, y1 = bbox.to_pixels(W, H, pad)
     if x1 - x0 < 1 or y1 - y0 < 1:
         return
+    style = as_enum(VideoStyle, style)
+    shape = as_enum(Shape, shape)
     roi = frame[y0:y1, x0:x1]
     styled = _region_styled(roi, style)
     if shape == Shape.ELLIPSE:

@@ -10,7 +10,7 @@ import csv
 from pathlib import Path
 
 from videoredact import __version__
-from .model import Project
+from .model import Project, AudioStyle, VideoStyle, Shape, as_enum
 
 
 def fmt_time(t: float) -> str:
@@ -28,15 +28,15 @@ def write_csv(project: Project, path: str | Path, result: dict | None = None) ->
                     "style", "shape", "text", "reason", "source", "enabled", "created_by", "created_at"])
         for r in project.audio_redactions:
             w.writerow(["audio", r.id, "speech", fmt_time(r.start), fmt_time(r.end), f"{r.duration:.3f}",
-                        "", "", (r.style or project.default_audio_style).value, "", r.text, r.reason,
+                        "", "", as_enum(AudioStyle, r.style or project.default_audio_style).value, "", r.text, r.reason,
                         r.source, r.enabled, r.created_by, r.created_at])
         for t in project.video_tracks:
             for s in t.spans:
                 st = s.start_frame / fps if fps else 0
                 en = (s.end_frame + 1) / fps if fps else 0
                 w.writerow(["video", t.id, t.label, fmt_time(st), fmt_time(en), f"{en - st:.3f}",
-                            s.start_frame, s.end_frame, (t.style or project.default_video_style).value,
-                            t.shape.value, "", t.note, t.source, t.enabled, t.created_by, t.created_at])
+                            s.start_frame, s.end_frame, as_enum(VideoStyle, t.style or project.default_video_style).value,
+                            as_enum(Shape, t.shape).value, "", t.note, t.source, t.enabled, t.created_by, t.created_at])
         w.writerow([])
         w.writerow(["source_file", project.media.path])
         w.writerow(["source_sha256", project.media.sha256])
@@ -90,7 +90,7 @@ def write_pdf(project: Project, path: str | Path, result: dict | None = None) ->
     rows = [["#", "Start", "End", "Dur (s)", "Style", "Redacted words", "Reason", "Source", "By", "Created"]]
     for i, r in enumerate(project.audio_redactions, 1):
         rows.append([str(i), fmt_time(r.start), fmt_time(r.end), f"{r.duration:.2f}",
-                     (r.style or project.default_audio_style).value,
+                     as_enum(AudioStyle, r.style or project.default_audio_style).value,
                      Paragraph(r.text or "(range)", small), Paragraph(r.reason or "", small), r.source,
                      Paragraph(r.created_by, small), Paragraph(r.created_at[:19].replace("T", " "), small)])
     if len(rows) == 1:
@@ -112,7 +112,8 @@ def write_pdf(project: Project, path: str | Path, result: dict | None = None) ->
     for i, tr in enumerate(project.video_tracks, 1):
         ranges = "; ".join(f"{fmt_time(s.start_frame / fps) if fps else s.start_frame} - "
                            f"{fmt_time((s.end_frame + 1) / fps) if fps else s.end_frame}" for s in tr.spans)
-        rows.append([str(i), tr.label, (tr.style or project.default_video_style).value, tr.shape.value,
+        rows.append([str(i), tr.label, as_enum(VideoStyle, tr.style or project.default_video_style).value,
+                     as_enum(Shape, tr.shape).value,
                      Paragraph(ranges, small), str(tr.total_frames()), tr.source,
                      Paragraph(tr.note, small), Paragraph(tr.created_by, small),
                      Paragraph(tr.created_at[:19].replace("T", " "), small)])

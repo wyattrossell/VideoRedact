@@ -18,7 +18,8 @@ from videoredact import __version__, updater
 from videoredact.audio.pii import suggest_pii
 from videoredact.audio.transcribe import find_matches, words_in_range
 from videoredact.core.media import MEDIA_FILTER, FrameReader, decode_audio, probe, sha256_file
-from videoredact.core.model import (AudioRedaction, AudioStyle, BBox, Project, Span, VideoStyle, VideoTrack, Word)
+from videoredact.core.model import (AudioRedaction, AudioStyle, BBox, Project, Shape, Span, VideoStyle, VideoTrack,
+                                    Word, as_enum)
 from videoredact.paths import settings
 from .dialogs import AutoDetectDialog, ExportDialog, NewBoxDialog, SettingsDialog
 from .panels import AUDIO_STYLE_NAMES, VIDEO_STYLE_NAMES, PIIDialog, RedactionPanel
@@ -306,8 +307,8 @@ class MainWindow(QMainWindow):
         self.video.selected_track_id = None
         self.c_astyle.blockSignals(True)
         self.c_vstyle.blockSignals(True)
-        self.c_astyle.setCurrentIndex(list(AUDIO_STYLE_NAMES).index(proj.default_audio_style))
-        self.c_vstyle.setCurrentIndex(list(VIDEO_STYLE_NAMES).index(proj.default_video_style))
+        self.c_astyle.setCurrentIndex(list(AUDIO_STYLE_NAMES).index(as_enum(AudioStyle, proj.default_audio_style)))
+        self.c_vstyle.setCurrentIndex(list(VIDEO_STYLE_NAMES).index(as_enum(VideoStyle, proj.default_video_style)))
         self.c_astyle.blockSignals(False)
         self.c_vstyle.blockSignals(False)
         m = proj.media
@@ -406,8 +407,8 @@ class MainWindow(QMainWindow):
     def _default_styles_changed(self) -> None:
         if not self.project:
             return
-        self.project.default_audio_style = self.c_astyle.currentData()
-        self.project.default_video_style = self.c_vstyle.currentData()
+        self.project.default_audio_style = as_enum(AudioStyle, self.c_astyle.currentData())
+        self.project.default_video_style = as_enum(VideoStyle, self.c_vstyle.currentData())
         self.project.log("default_styles", f"audio={self.project.default_audio_style.value} video={self.project.default_video_style.value}")
         self._project_changed()
 
@@ -630,7 +631,8 @@ class MainWindow(QMainWindow):
         if dlg.exec() != QDialog.Accepted:
             return
         label = dlg.label.currentText().strip() or "other"
-        track = VideoTrack(label=label, style=dlg.style.currentData(), shape=dlg.shape.currentData(),
+        track = VideoTrack(label=label, style=as_enum(VideoStyle, dlg.style.currentData()),
+                           shape=as_enum(Shape, dlg.shape.currentData()) or Shape.RECT,
                            pad=settings["video_pad"], source="manual")
         mode = dlg.mode()
         if mode == "keyframe":

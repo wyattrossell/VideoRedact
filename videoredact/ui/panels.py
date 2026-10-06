@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogBut
                                QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QCheckBox)
 
 from videoredact.audio.pii import Suggestion
-from videoredact.core.model import AudioStyle, Project, Shape, VideoStyle
+from videoredact.core.model import AudioStyle, Project, Shape, VideoStyle, as_enum
 
 AUDIO_STYLE_NAMES = {AudioStyle.BEEP: "Beep", AudioStyle.SILENCE: "Silence", AudioStyle.LOW_TONE: "Low tone",
                      AudioStyle.NOISE: "Noise"}
@@ -83,8 +83,9 @@ class RedactionPanel(QWidget):
                 it.setData(0, Qt.UserRole, ("audio", r.id))
                 it.setToolTip(1, f"{r.text}\nreason: {r.reason}\nsource: {r.source}\nby {r.created_by} at {r.created_at}")
                 self.audio_root.addChild(it)
-                combo = self._style_combo(AUDIO_STYLE_NAMES, r.style, p.default_audio_style,
-                                          lambda v, rr=r: self._set_audio_style(rr, v))
+                combo = self._style_combo(AUDIO_STYLE_NAMES, as_enum(AudioStyle, r.style),
+                                          as_enum(AudioStyle, p.default_audio_style),
+                                          lambda v, rr=r: self._set_audio_style(rr, as_enum(AudioStyle, v)))
                 self.tree.setItemWidget(it, 4, combo)
                 if r.id == keep_selection:
                     sel_item = it
@@ -95,10 +96,11 @@ class RedactionPanel(QWidget):
                 it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
                 it.setCheckState(0, Qt.Checked if t.enabled else Qt.Unchecked)
                 it.setData(0, Qt.UserRole, ("video", t.id))
-                it.setToolTip(1, f"{t.label}\n{t.note}\nshape: {t.shape.value}, pad: {t.pad:.0%}\nby {t.created_by} at {t.created_at}")
+                it.setToolTip(1, f"{t.label}\n{t.note}\nshape: {as_enum(Shape, t.shape).value}, pad: {t.pad:.0%}\nby {t.created_by} at {t.created_at}")
                 self.video_root.addChild(it)
-                combo = self._style_combo(VIDEO_STYLE_NAMES, t.style, p.default_video_style,
-                                          lambda v, tt=t: self._set_video_style(tt, v))
+                combo = self._style_combo(VIDEO_STYLE_NAMES, as_enum(VideoStyle, t.style),
+                                          as_enum(VideoStyle, p.default_video_style),
+                                          lambda v, tt=t: self._set_video_style(tt, as_enum(VideoStyle, v)))
                 self.tree.setItemWidget(it, 4, combo)
                 if t.id == keep_selection:
                     sel_item = it
@@ -113,7 +115,7 @@ class RedactionPanel(QWidget):
         c = QComboBox()
         c.addItem(f"Default ({names[default]})", None)
         for k, v in names.items():
-            c.addItem(v, k)
+            c.addItem(v, k.value)   # store the plain value: Qt would turn the str-enum into str anyway
         idx = 0 if current is None else list(names).index(current) + 1
         c.setCurrentIndex(idx)
         c.currentIndexChanged.connect(lambda i, cc=c: cb(cc.itemData(i)))

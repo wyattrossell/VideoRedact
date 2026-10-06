@@ -99,6 +99,21 @@ Wyatt tested v0.1.2 on body-cam footage (samples/, two Axon clips 720p30, 14 and
 Benchmarks live in NOTES "Performance reference"; scratch scripts were in the
 session scratchpad (bench_*.py) - recreate from the numbers if needed.
 
+## Round 2 feedback (2026-10-06 evening, v0.1.4)
+
+- **"Warnings when changing options" + "video redaction not working"** were one
+  bug: Qt's `QComboBox.itemData()` returns our `str`-based enums as plain `str`,
+  so every style change hit `'str' object has no attribute 'value'`, and the
+  same crash fired inside `_run_tracking` right after the placeholder track was
+  added, before the tracking job started -> the box existed on one frame only.
+  Fix: `model.as_enum()` coercion at every UI entry point and in the
+  serializer/renderers; combos now store plain values. Regression test:
+  tests/test_ui_styles.py (drives the real combos offscreen).
+- Lesson: anything that goes through a QVariant comes back as a base type.
+  Never store enum members as item data; store `.value` and coerce on read.
+- scripts/smoke_realvideo.py drives the real window on samples/ end to end
+  (track -> style change -> export -> pixel check). Run it before releasing.
+
 ## Build, versioning, releases, auto-update (added 2026-10-06)
 
 - `installer\build.ps1` = the release button. It bumps the patch version

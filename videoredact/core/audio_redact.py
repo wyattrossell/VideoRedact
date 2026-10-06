@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .model import AudioRedaction, AudioStyle
+from .model import AudioRedaction, AudioStyle, as_enum
 
 LOW_TONE_FREQ = 400.0
 DEFAULT_LEVEL_DB = -14.0
@@ -62,7 +62,7 @@ def apply_redactions(samples: np.ndarray, sr: int, redactions: list[AudioRedacti
     for r in redactions:
         if not r.enabled or r.end <= r.start:
             continue
-        st = r.style or default_style
+        st = as_enum(AudioStyle, r.style or default_style)
         by_style.setdefault(st, []).append((max(0.0, r.start - pad_s) - start_time, r.end + pad_s - start_time))
 
     for style, ranges in by_style.items():

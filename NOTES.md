@@ -124,5 +124,10 @@ undo/redo, real-footage QA, installer build has not been run yet.
 
 ## Log
 
+- 2026-10-06 (pm): Release pipeline done. v0.1.1 and v0.1.2 built, installed
+  per-user, self-tested, published to GitHub Releases. Verified the real update
+  path: installed 0.1.1 -> fetch latest -> download 0.1.2 -> silent upgrade ->
+  installed app reports 0.1.2. Current installed copy on this laptop: 0.1.2
+  at %LocalAppData%\Programs\VideoRedact. Next release: `.\installer\build.ps1 -Publish`.
 - 2026-10-06: Project created. Core, vision, audio, UI, tests, smoke scripts,
   docs, installer scaffolding. Reference repo research in docs/RESEARCH.md.

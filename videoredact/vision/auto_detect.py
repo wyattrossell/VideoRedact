@@ -53,6 +53,7 @@ class AutoDetectOptions:
     start_frame: int = 0
     end_frame: Optional[int] = None
     threads: int = 0
+    face_model: str = "yunet"
 
 
 def _match(live: list[_Live], dets: list[Detection], iou_thr: float) -> tuple[list[tuple[int, int]], list[int], list[int]]:
@@ -82,7 +83,8 @@ def run_auto_detect(reader: FrameReader, opts: AutoDetectOptions,
                     progress: Optional[ProgressCB] = None,
                     cancel: Optional[CancelCB] = None,
                     detector: Optional[CombinedDetector] = None) -> list[VideoTrack]:
-    det = detector or CombinedDetector(opts.labels, opts.face_conf, opts.obj_conf, opts.obj_model, opts.threads)
+    det = detector or CombinedDetector(opts.labels, opts.face_conf, opts.obj_conf, opts.obj_model, opts.threads,
+                                       face_model=opts.face_model)
     W, H = reader.width, reader.height
     scale = min(1.0, DETECT_MAX_SIDE / max(W, H))
     size = (int(round(W * scale)), int(round(H * scale)))

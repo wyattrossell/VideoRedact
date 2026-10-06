@@ -40,10 +40,14 @@ developer log and [docs/ROADMAP.md](docs/ROADMAP.md) for what is next.
 .\scripts\run_dev.ps1            # or: C:\dev\venv-videoredact\Scripts\python -m videoredact
 ```
 
-Detection models (~75 MB) and the speech model (~500 MB for `small`) are
-downloaded to `%LOCALAPPDATA%\VideoRedact\models` on first use. For machines
-without internet run `python scripts\fetch_models.py --whisper small` on a
-connected machine and copy that folder.
+The installer bundles every model (face/object detectors and the `small`
+speech model), so installed copies work with no internet. When running from
+source, models are downloaded to `%LOCALAPPDATA%\VideoRedact\models` on first
+use (`python scripts\fetch_models.py --whisper small` pre-fetches them).
+
+Long operations (transcribe, track, detect, export) run as background jobs in
+the Jobs panel; the window stays usable and results stream in live. Tracking a
+box through a 14-minute 720p clip takes about 2-3 minutes on an 8-core CPU.
 
 FFmpeg: the dev environment uses the binary from the `imageio-ffmpeg` wheel.
 The installer ships an LGPL build in `bin\ffmpeg.exe`. Override with

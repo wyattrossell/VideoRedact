@@ -27,6 +27,7 @@ from .timeline import Timeline
 from .transcript_view import TranscriptView
 from .video_view import VideoView
 from .workers import run_task
+from .jobs import JobsPanel
 
 PROJECT_FILTER = "VideoRedact project (*.vrproj)"
 
@@ -78,6 +79,8 @@ class MainWindow(QMainWindow):
         split.setStretchFactor(1, 2)
         split.setSizes([900, 500])
         self.setCentralWidget(split)
+        self.jobs = JobsPanel(self)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.jobs)
         self.setStatusBar(QStatusBar())
         self._build_menu()
         self._connect()
@@ -215,6 +218,7 @@ class MainWindow(QMainWindow):
         self.timeline.canvas.seekRequested.connect(self.seek)
         self.timeline.canvas.audioSelected.connect(lambda i: self._select("audio", i))
         self.timeline.canvas.trackSelected.connect(lambda i: self._select("video", i))
+        self.timeline.canvas.rangeSelected.connect(self.redact_time_range)
 
     def _update_enabled(self) -> None:
         has = self.project is not None
@@ -262,9 +266,9 @@ class MainWindow(QMainWindow):
         proj.log("media_opened", f"{path} ({info.width}x{info.height} @ {info.fps:.3f} fps, {info.duration:.1f}s)")
         self._set_project(proj)
         # Hash the source in the background (needed for the report)
-        run_task(self, "Computing source file hash…",
-                 lambda prog, cancel: sha256_file(path, lambda f: prog(f, "Hashing source file")),
-                 lambda h: self._set_hash(proj, h), cancellable=False)
+        self.jobs.run("Hashing source file",
+                      lambda prog, cancel, partial: sha256_file(path, lambda f: prog(f, "SHA-256 of source")),
+                      lambda h: self._set_hash(proj, h))
 
     def _set_hash(self, proj: Project, h: str) -> None:
         if self.project is proj:
@@ -380,7 +384,13 @@ class MainWindow(QMainWindow):
         return r == QMessageBox.Discard
 
     def closeEvent(self, event):
+        if self.jobs.running and QMessageBox.question(
+                self, "Jobs running", f"{self.jobs.running} background job(s) are still running. Cancel them and quit?") != QMessageBox.Yes:
+            event.ignore()
+            return
         if self._confirm_discard():
+            self.jobs.cancel_all()
+            self.jobs.wait_all(3000)
             self.player.stop()
             event.accept()
         else:
@@ -530,6 +540,17 @@ class MainWindow(QMainWindow):
         self.project.add_audio_redaction(r)
         self._project_changed()
 
+    def redact_time_range(self, t0: float, t1: float) -> None:
+        """Audio redaction from a timeline drag (works with or without a transcript)."""
+        if not self.project:
+            return
+        words = words_in_range(self.project.transcript, t0, t1)
+        r = AudioRedaction(t0, t1, text=" ".join(w.text for w in words), source="range")
+        self.project.add_audio_redaction(r)
+        self._project_changed()
+        self._select("audio", r.id)
+        self.statusBar().showMessage(f"Audio redacted {fmt_time(t0)} – {fmt_time(t1)}", 5000)
+
     def transcribe(self) -> None:
         if not self.project or not self.project.media.has_audio:
             return
@@ -540,32 +561,48 @@ class MainWindow(QMainWindow):
         size = settings["whisper_model"]
         lang = settings["language"] or None
         threads = settings["cpu_threads"]
+        vad = bool(settings.get("vad", False))
         duration = self.project.media.duration
+        proj = self.project
+        proj.transcript = []
+        self.transcript.rebuild()
+        self.tabs.setCurrentWidget(self.transcript)
 
-        def job(prog, cancel):
-            prog(0.0, f"Loading speech model '{size}' (first run downloads it)…")
+        def job(prog, cancel, partial):
+            prog(0.0, f"Loading speech model '{size}'…")
             from videoredact.audio.transcribe import Transcriber
             tr = Transcriber(size, cpu_threads=threads)
             prog(0.02, "Decoding audio…")
             audio, sr = decode_audio(path, sample_rate=16000, mono=True)
             if cancel():
                 return None
-            return tr.transcribe(audio[:, 0], duration=duration, language=lang, progress=prog, cancel=cancel)
+            prog(0.03, "Listening… first words appear as soon as speech is found")
+            return tr.transcribe(audio[:, 0], duration=duration, language=lang, progress=prog, cancel=cancel,
+                                 vad=vad, on_segment=partial)
+
+        def on_partial(seg):
+            if self.project is proj:
+                proj.transcript.append(seg)
+                self.transcript.append_segment(seg)
+                self._update_enabled()
 
         def done(segments):
-            if segments is None:
+            if segments is None or self.project is not proj:
                 return
-            self.project.transcript = segments
-            self.project.transcript_model = f"faster-whisper {size} (int8, CPU)"
-            self.project.log("transcribed", f"{len(segments)} segments, model {size}")
+            proj.transcript = segments
+            proj.transcript_model = f"faster-whisper {size} (int8, CPU{', VAD' if vad else ''})"
+            proj.log("transcribed", f"{len(segments)} segments, model {size}")
             self.transcript.rebuild()
             self._update_enabled()
             self.dirty = True
-            self.tabs.setCurrentWidget(self.transcript)
             n_words = sum(len(s.words) for s in segments)
-            self.statusBar().showMessage(f"Transcription complete: {len(segments)} segments, {n_words} words", 8000)
+            msg = f"Transcription complete: {len(segments)} segments, {n_words} words"
+            if not segments:
+                msg += " - no speech recognised. Check the audio track plays, or try a larger model in Settings."
+            self.statusBar().showMessage(msg, 12000)
 
-        run_task(self, "Transcribing…", job, done)
+        self.jobs.run("Transcribing speech", job, done, on_partial=on_partial,
+                      on_cancel=lambda: self.statusBar().showMessage("Transcription cancelled (partial transcript kept)", 6000))
 
     def suggest_pii(self) -> None:
         if not self.project or not self.project.transcript:
@@ -612,40 +649,68 @@ class MainWindow(QMainWindow):
             self._project_changed()
             self._select("video", track.id)
         else:
-            self._run_tracking(frame, bbox, label, track)
+            end_frame = min(self.project.media.frame_count - 1, int(round(dlg.track_end_time * self.fps))) if self.project.media.frame_count else None
+            self._run_tracking(frame, bbox, label, track, step=dlg.track_step, backward=dlg.track_backward, end_frame=end_frame)
 
-    def _run_tracking(self, frame: int, bbox: BBox, label: str, proto: VideoTrack, replace_id: Optional[str] = None) -> None:
-        path = self.project.media.path
+    def _run_tracking(self, frame: int, bbox: BBox, label: str, proto: VideoTrack, replace_id: Optional[str] = None,
+                      step: Optional[int] = None, backward: Optional[bool] = None, end_frame: Optional[int] = None) -> None:
+        """Track in the background. The track is added immediately with the drawn box and
+        fills in live as the tracker advances, so the UI stays usable."""
+        proj = self.project
+        path = proj.media.path
         det_label = label if label in ("face", "screen", "document", "phone", "person") else None
-        face_conf, obj_conf, model, threads = settings["face_conf"], settings["detect_conf"], settings.get("detector_model", "yolox_s"), settings["cpu_threads"]
+        face_conf, obj_conf, model, threads = settings["face_conf"], settings["detect_conf"], settings.get("detector_model", "yolox_tiny"), settings["cpu_threads"]
+        face_model = settings.get("face_detector", "yunet")
+        from videoredact.vision.tracker import TrackOptions
+        opts = TrackOptions(step=int(step or settings.get("track_step", 2)),
+                            backward=bool(settings.get("track_backward", True) if backward is None else backward),
+                            end_frame=end_frame)
+        # live placeholder track
+        live = VideoTrack(label=label, style=proto.style, shape=proto.shape, pad=proto.pad, source="tracked",
+                          note="tracking in progress…")
+        live.add_keyframe(frame, bbox)
+        if replace_id:
+            proj.remove_video_track(replace_id)
+        proj.add_video_track(live)
+        self._project_changed()
+        self._select("video", live.id)
 
-        def job(prog, cancel):
+        def job(prog, cancel, partial):
             from videoredact.vision.tracker import ObjectTracker
             det = None
             if det_label:
                 try:
                     from videoredact.vision.detector import CombinedDetector
-                    prog(0.0, "Loading detector to help re-acquire the object…")
-                    det = CombinedDetector([det_label], face_conf, obj_conf, model, threads)
+                    prog(0.0, "Loading detector…")
+                    det = CombinedDetector([det_label], face_conf, obj_conf, model, threads, face_model=face_model)
                 except Exception:
                     det = None
             with FrameReader(path) as reader:
-                return ObjectTracker(reader, det).track(frame, bbox, label=det_label or label, backward=True,
-                                                         progress=prog, cancel=cancel)
+                return ObjectTracker(reader, det, opts).track(frame, bbox, label=det_label or label,
+                                                              progress=prog, cancel=cancel, on_update=partial)
+
+        def on_partial(spans):
+            if self.project is proj and proj.get_track(live.id) is live:
+                live.spans = spans
+                live.merge_spans()
+                self.timeline.refresh()
+                self.video.set_tracks(proj.video_tracks, proj.default_video_style)
 
         def done(track: VideoTrack):
-            if track is None:
+            if track is None or self.project is not proj or proj.get_track(live.id) is not live:
                 return
-            track.style, track.shape, track.pad, track.label = proto.style, proto.shape, proto.pad, label
-            track.note = f"tracked from frame {frame}; {len(track.spans)} visible span(s)"
-            if replace_id:
-                self.project.remove_video_track(replace_id)
-            self.project.add_video_track(track)
+            live.spans = track.spans
+            live.note = f"tracked from frame {frame}; {len(track.spans)} visible span(s); every {opts.step} frame(s)"
+            proj.log("tracked", f"{label} {live.total_frames()} frames in {len(live.spans)} span(s)")
             self._project_changed()
-            self._select("video", track.id)
-            self.statusBar().showMessage(f"Tracked '{label}': {track.total_frames()} frames in {len(track.spans)} span(s)", 8000)
+            self.statusBar().showMessage(f"Tracked '{label}': {live.total_frames()} frames in {len(live.spans)} span(s)", 8000)
 
-        run_task(self, "Tracking object…", job, done)
+        def on_cancel():
+            if self.project is proj:
+                live.note = "tracking cancelled (partial result kept)"
+                self._project_changed()
+
+        self.jobs.run(f"Tracking '{label}'", job, done, on_partial=on_partial, on_cancel=on_cancel)
 
     def on_box_edited(self, tid: str, bbox: BBox) -> None:
         t = self.project.get_track(tid) if self.project else None
@@ -698,17 +763,20 @@ class MainWindow(QMainWindow):
         path = self.project.media.path
         from videoredact.vision.auto_detect import AutoDetectOptions, run_auto_detect
         opts = AutoDetectOptions(labels=labels, stride=dlg.stride.value(), face_conf=settings["face_conf"],
-                                 obj_conf=settings["detect_conf"], obj_model=settings.get("detector_model", "yolox_s"),
+                                 obj_conf=settings["detect_conf"], obj_model=settings.get("detector_model", "yolox_tiny"),
                                  threads=settings["cpu_threads"])
         replace = dlg.replace.isChecked()
 
-        def job(prog, cancel):
-            prog(0.0, "Loading detection models (first run downloads them)…")
+        opts.face_model = settings.get("face_detector", "yunet")
+        proj = self.project
+
+        def job(prog, cancel, partial):
+            prog(0.0, "Loading detection models…")
             with FrameReader(path) as reader:
                 return run_auto_detect(reader, opts, prog, cancel)
 
         def done(tracks):
-            if tracks is None:
+            if tracks is None or self.project is not proj:
                 return
             if replace:
                 for t in [t for t in self.project.video_tracks if t.source == "auto"]:
@@ -725,7 +793,7 @@ class MainWindow(QMainWindow):
                                     ".\n\nPlay the video with 'Preview redactions' on to review. "
                                     "Delete false hits in the Redactions panel; draw boxes for anything missed.")
 
-        run_task(self, "Detecting objects…", job, done)
+        self.jobs.run("Auto-detecting objects", job, done)
 
     def clear_auto(self) -> None:
         if not self.project:
@@ -755,20 +823,23 @@ class MainWindow(QMainWindow):
         settings.save()
         proj = self.project
 
-        def job(prog, cancel):
+        def job(prog, cancel, partial):
             from videoredact.core.export import ExportCancelled, export_project
             try:
                 return export_project(proj, opts, prog, cancel)
             except ExportCancelled:
                 return None
 
+        def on_cancel():
+            self.statusBar().showMessage("Export cancelled", 5000)
+            try:
+                os.remove(opts.output_path)
+            except OSError:
+                pass
+
         def done(res):
             if res is None:
-                self.statusBar().showMessage("Export cancelled", 5000)
-                try:
-                    os.remove(opts.output_path)
-                except OSError:
-                    pass
+                on_cancel()
                 return
             self.dirty = True
             lines = [f"Redacted media written to:\n{res['output']}", f"SHA-256: {res['output_sha256']}"]
@@ -784,7 +855,7 @@ class MainWindow(QMainWindow):
             if box.clickedButton() == open_btn:
                 os.startfile(str(Path(res["output"]).parent))  # type: ignore[attr-defined]
 
-        run_task(self, "Exporting…", job, done)
+        self.jobs.run("Exporting redacted media", job, done, on_cancel=on_cancel)
 
     # ---------------------------------------------------------------- misc
     def open_settings(self) -> None:

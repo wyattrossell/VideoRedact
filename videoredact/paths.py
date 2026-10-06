@@ -11,7 +11,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 APP_NAME = "VideoRedact"
 
@@ -45,20 +45,43 @@ def user_data_dir() -> Path:
 
 
 def models_dir() -> Path:
+    """Writable models directory (downloads land here)."""
     env = os.environ.get("VIDEOREDACT_MODELS")
     if env:
         p = Path(env)
         p.mkdir(parents=True, exist_ok=True)
         return p
-    for bundled in (resource_root() / "models", app_root() / "models"):
-        if getattr(sys, "frozen", False) and bundled.exists() and any(bundled.iterdir()):
-            return bundled
     d = user_data_dir() / "models"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def whisper_dir() -> Path:
+def bundled_models_dir() -> Optional[Path]:
+    """Read-only models shipped with the installer (frozen builds), if any."""
+    if not getattr(sys, "frozen", False):
+        return None
+    for d in (resource_root() / "models", app_root() / "models"):
+        if d.exists() and any(d.iterdir()):
+            return d
+    return None
+
+
+def model_search_dirs() -> list[Path]:
+    dirs = []
+    b = bundled_models_dir()
+    if b:
+        dirs.append(b)
+    dirs.append(models_dir())
+    return dirs
+
+
+def whisper_dir(model_size: str = "") -> Path:
+    """Folder to hand faster-whisper as download_root. Prefers the bundled
+    folder when it already holds the requested model, else the user folder."""
+    if model_size:
+        b = bundled_models_dir()
+        if b and (b / "whisper" / f"models--Systran--faster-whisper-{model_size}").exists():
+            return b / "whisper"
     d = models_dir() / "whisper"
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -76,9 +99,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "default_video_style": "black",
     "beep_frequency": 1000.0,
     "audio_pad_s": 0.05,            # extra padding around each audio redaction at export
-    "detect_stride": 3,             # run object detectors every N frames
+    "detect_stride": 5,             # run object detectors every N frames
     "detect_conf": 0.35,
-    "face_conf": 0.6,
+    "face_conf": 0.5,
     "detect_classes": ["face", "screen", "document", "license_plate"],
     "video_pad": 0.10,
     "export_crf": 18,
@@ -86,9 +109,13 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "cpu_threads": 0,               # 0 = auto
     "tracker": "csrt",
     "media_backend": "",            # unused since the custom player; kept for settings compatibility
-    "detector_model": "yolox_s",
+    "detector_model": "yolox_tiny",
     "check_updates": True,          # ask GitHub Releases for a newer installer at startup
     "skip_version": "",             # user chose "skip this version"
+    "vad": False,                   # whisper voice-activity filter; off: catches quiet speech in noisy body-cam audio
+    "track_step": 2,                # tracker processes every N-th frame
+    "track_backward": True,
+    "face_detector": "yunet",       # yunet | centerface
 }
 
 

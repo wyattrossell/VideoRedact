@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from videoredact.paths import models_dir
+from videoredact.paths import model_search_dirs, models_dir
 
 ProgressCB = Callable[[float, str], None]
 
@@ -47,7 +47,13 @@ MODELS: dict[str, ModelSpec] = {
 
 
 def model_path(name: str) -> Path:
-    return models_dir() / MODELS[name].filename
+    """Existing copy (bundled first, then user dir) or the user-dir download target."""
+    spec = MODELS[name]
+    for d in model_search_dirs():
+        p = d / spec.filename
+        if p.exists() and p.stat().st_size >= spec.min_bytes:
+            return p
+    return models_dir() / spec.filename
 
 
 def is_available(name: str) -> bool:

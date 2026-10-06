@@ -24,6 +24,7 @@ class TimelineCanvas(QWidget):
     seekRequested = Signal(float)
     audioSelected = Signal(str)
     trackSelected = Signal(str)
+    rangeSelected = Signal(float, float)   # drag on the audio lane -> new audio redaction
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -35,7 +36,9 @@ class TimelineCanvas(QWidget):
         self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._dragging = False
+        self._range_drag: Optional[tuple[float, float]] = None  # (anchor t, current t) while dragging on audio lane
         self.setFont(QFont("Segoe UI", 8))
+        self.setToolTip("Click/drag: seek.  Drag on the Audio lane: redact that range.  Ctrl+wheel: zoom.")
 
     # ---- geometry --------------------------------------------------------
     def set_project(self, p: Optional[Project]) -> None:
@@ -104,6 +107,13 @@ class TimelineCanvas(QWidget):
                     for s in tr.spans:
                         self._bar(p, s.start_frame / fps, (s.end_frame + 1) / fps, y, c, tr.id == self.selected_id)
             y += LANE_H
+        # audio range being dragged
+        if self._range_drag:
+            a, b = sorted(self._range_drag)
+            rr = QRectF(self.x_of(a), RULER_H + 2, max(2.0, self.x_of(b) - self.x_of(a)), LANE_H - 4)
+            p.setBrush(QBrush(QColor(255, 90, 90, 110)))
+            p.setPen(QPen(QColor(255, 120, 120), 1, Qt.DashLine))
+            p.drawRect(rr)
         # playhead
         x = self.x_of(self.playhead)
         p.setPen(QPen(QColor(255, 255, 255), 1.5))
@@ -135,23 +145,44 @@ class TimelineCanvas(QWidget):
                 return ("video", tr.id)
         return None
 
+    def _lane_at(self, pos) -> int:
+        return -1 if pos.y() < RULER_H else int((pos.y() - RULER_H) // LANE_H)
+
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
             return
-        hit = self._hit(event.position())
+        pos = event.position()
+        hit = self._hit(pos)
         if hit:
             self.selected_id = hit[1]
             (self.audioSelected if hit[0] == "audio" else self.trackSelected).emit(hit[1])
             self.update()
-        if event.position().x() >= LABEL_W:
+        if pos.x() < LABEL_W:
+            return
+        t = self.t_of(pos.x())
+        if self.project and self._lane_at(pos) == 0 and not hit:
+            # start a range selection on the audio lane
+            self._range_drag = (t, t)
+        else:
             self._dragging = True
-            self.seekRequested.emit(self.t_of(event.position().x()))
+        self.seekRequested.emit(t)
 
     def mouseMoveEvent(self, event):
-        if self._dragging:
-            self.seekRequested.emit(self.t_of(event.position().x()))
+        t = self.t_of(event.position().x())
+        if self._range_drag:
+            self._range_drag = (self._range_drag[0], t)
+            self.seekRequested.emit(t)
+            self.update()
+        elif self._dragging:
+            self.seekRequested.emit(t)
 
     def mouseReleaseEvent(self, event):
+        if self._range_drag:
+            a, b = sorted(self._range_drag)
+            self._range_drag = None
+            self.update()
+            if b - a >= 0.08:
+                self.rangeSelected.emit(a, b)
         self._dragging = False
 
 

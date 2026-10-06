@@ -133,6 +133,20 @@ def selftest(media: str | None = None) -> int:
             return f"{r['output']} ({r['elapsed_s']:.1f}s), report {os.path.basename(r.get('report_pdf', ''))}"
         step("export (first 1 s redacted)", _export)
 
+        if "--transcribe" in sys.argv:
+            def _transcribe():
+                from videoredact.audio.transcribe import Transcriber
+                from videoredact.core.media import decode_audio
+                from videoredact.paths import settings
+                size = settings.get("whisper_model", "small")
+                tr = Transcriber(size)
+                audio, sr = decode_audio(media, sample_rate=16000, mono=True, start=0, duration=90)
+                segs = tr.transcribe(audio[:, 0], duration=len(audio) / sr, language=None)
+                words = sum(len(s.words) for s in segs)
+                sample = " ".join(w.text for s in segs[:3] for w in s.words)[:120]
+                return f"model {size}: {len(segs)} segments / {words} words in first 90 s; e.g. '{sample}'"
+            step("speech recognition", _transcribe)
+
     lines.append("RESULT: " + ("ALL OK" if ok_all else "FAILURES (see log)"))
     text = "\n".join(lines)
     log.info("\n%s", text)

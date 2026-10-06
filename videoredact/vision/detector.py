@@ -9,6 +9,7 @@ All boxes returned are normalized BBox instances plus a label and score.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -79,6 +80,74 @@ class FaceDetector:
         return out
 
 
+def _ort_session(model_bytes_or_path, threads: int = 0):
+    import onnxruntime as ort
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = threads or max(1, min(4, (os.cpu_count() or 4) // 2))
+    so.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    return ort.InferenceSession(model_bytes_or_path, so, providers=["CPUExecutionProvider"])
+
+
+class CenterFaceDetector:
+    """CenterFace (MIT) via ONNX Runtime. Better recall than YuNet on small and
+    side-view faces, ~3x slower. Preprocessing follows deface: resize to a
+    multiple of 32, no normalisation, BGR. The published model has static
+    input dims, so a dynamic-shape copy is written next to it on first use."""
+
+    def __init__(self, score_thr: float = 0.35, nms_thr: float = 0.3, max_side: int = 1280, threads: int = 0):
+        from videoredact.paths import models_dir
+        src = model_registry.ensure_model("centerface")
+        dyn = models_dir() / "centerface_dyn.onnx"
+        if not dyn.exists() or dyn.stat().st_size < 1_000_000:
+            import onnx
+            m = onnx.load(str(src))
+            init_names = {i.name for i in m.graph.initializer}
+            for inp in m.graph.input:
+                if inp.name in init_names:
+                    continue
+                dims = inp.type.tensor_type.shape.dim
+                for i, nm in enumerate(["B", "C", "H", "W"]):
+                    if i < len(dims) and i != 1:
+                        dims[i].dim_param = nm
+            for out in m.graph.output:
+                dims = out.type.tensor_type.shape.dim
+                for i, nm in enumerate(["B", "C", "H4", "W4"]):
+                    if i < len(dims) and i != 1:
+                        dims[i].dim_param = nm
+            onnx.save(m, str(dyn))
+        self.sess = _ort_session(str(dyn), threads)
+        self.inp = self.sess.get_inputs()[0].name
+        self.score_thr = score_thr
+        self.nms_thr = nms_thr
+        self.max_side = max_side
+
+    def detect(self, frame: np.ndarray) -> list[Detection]:
+        H, W = frame.shape[:2]
+        s = min(1.0, self.max_side / max(H, W))
+        w32, h32 = max(32, (int(W * s) // 32) * 32), max(32, (int(H * s) // 32) * 32)
+        res = cv2.resize(frame, (w32, h32), interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR)
+        blob = cv2.dnn.blobFromImage(res, scalefactor=1.0, size=(w32, h32), mean=(0, 0, 0), swapRB=False, crop=False)
+        heat, scale, off, _lms = self.sess.run(None, {self.inp: blob})
+        heat, scale, off = heat[0, 0], scale[0], off[0]
+        ys, xs = np.where(heat > self.score_thr)
+        if len(ys) == 0:
+            return []
+        sx, sy = W / w32, H / h32
+        boxes, scores = [], []
+        for y, x in zip(ys, xs):
+            bh, bw = float(np.exp(scale[0, y, x]) * 4), float(np.exp(scale[1, y, x]) * 4)
+            cx, cy = (x + float(off[1, y, x]) + 0.5) * 4, (y + float(off[0, y, x]) + 0.5) * 4
+            boxes.append([(cx - bw / 2) * sx, (cy - bh / 2) * sy, bw * sx, bh * sy])
+            scores.append(float(heat[y, x]))
+        idx = cv2.dnn.NMSBoxes(boxes, scores, self.score_thr, self.nms_thr)
+        out = []
+        for i in np.array(idx).reshape(-1):
+            x0, y0, bw, bh = boxes[i]
+            out.append(Detection(BBox.from_pixels(x0, y0, x0 + bw, y0 + bh, W, H), "face", scores[i]))
+        return out
+
+
 class ObjectDetector:
     """YOLOX ONNX inference (yolox_s @640 or yolox_tiny @416)."""
 
@@ -87,8 +156,10 @@ class ObjectDetector:
         import onnxruntime as ort
         path = model_registry.ensure_model(model)
         so = ort.SessionOptions()
-        if threads:
-            so.intra_op_num_threads = threads
+        # Leave cores for OpenCV/decoding and stop ORT threads from spin-waiting after a run:
+        # with spinning on, a resident session slowed KCF 2.5x and YOLOX itself 5x (measured).
+        so.intra_op_num_threads = threads or max(1, min(4, (os.cpu_count() or 4) // 2))
+        so.add_session_config_entry("session.intra_op.allow_spinning", "0")
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self.sess = ort.InferenceSession(str(path), so, providers=["CPUExecutionProvider"])
         inp = self.sess.get_inputs()[0]
@@ -152,10 +223,15 @@ class ObjectDetector:
 
 
 class CombinedDetector:
-    def __init__(self, labels: list[str], face_conf: float = 0.6, obj_conf: float = 0.35,
-                 obj_model: str = "yolox_s", threads: int = 0):
+    def __init__(self, labels: list[str], face_conf: float = 0.5, obj_conf: float = 0.35,
+                 obj_model: str = "yolox_tiny", threads: int = 0, face_model: str = "yunet"):
         self.labels = set(labels)
-        self.face = FaceDetector(face_conf) if "face" in self.labels else None
+        self.face = None
+        if "face" in self.labels:
+            if face_model == "centerface":
+                self.face = CenterFaceDetector(min(face_conf, 0.5), threads=threads)
+            else:
+                self.face = FaceDetector(face_conf, max_side=1280)
         obj_labels = self.labels - {"face"}
         self.obj = ObjectDetector(obj_model, obj_conf, labels=obj_labels, threads=threads) if obj_labels else None
 

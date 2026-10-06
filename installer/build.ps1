@@ -7,11 +7,11 @@
 #   6. optionally publishes the GitHub release (-Publish) so installed copies auto-update
 #
 # Prereqs: scripts\setup_dev.ps1 (venv), `pip install pyinstaller`, Inno Setup 6 (winget install JRSoftware.InnoSetup).
-# Usage:   .\installer\build.ps1 [-Bump patch] [-BundleModels] [-NoCommit] [-Publish] [-VenvPath C:\dev\venv-videoredact]
+# Usage:   .\installer\build.ps1 [-Bump patch] [-NoModels] [-NoCommit] [-Publish] [-VenvPath C:\dev\venv-videoredact]
 param(
     [string]$VenvPath = "C:\dev\venv-videoredact",
     [string]$Bump = "patch",
-    [switch]$BundleModels,
+    [switch]$NoModels,
     [switch]$NoCommit,
     [switch]$Publish,
     [switch]$NoBump
@@ -59,11 +59,14 @@ if (-not (Test-Path "$repo\bin\ffmpeg.exe")) {
     Copy-Item "$src".Trim() "$repo\bin\ffmpeg.exe"
 }
 
-# ---- models (optional offline bundle) -------------------------------------
-if ($BundleModels) {
+# ---- models (bundled by default so agency machines need no internet) ------
+# Detection models (~65 MB) + faster-whisper "small" int8 (~480 MB) go into models\ -> _internal\models.
+# Pass -NoModels for a slim download-on-first-use build (remove the models\ folder first).
+if (-not $NoModels) {
     $env:VIDEOREDACT_MODELS = "$repo\models"
     & $py scripts\fetch_models.py --whisper small
     Remove-Item Env:\VIDEOREDACT_MODELS
+    if (-not (Test-Path "$repo\models\whisper\models--Systran--faster-whisper-small")) { throw "whisper model bundle missing" }
 }
 
 # ---- 2. PyInstaller -------------------------------------------------------

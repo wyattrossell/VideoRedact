@@ -78,12 +78,15 @@ class SettingsDialog(QDialog):
                               "large-v3-turbo: most accurate, needs ~6 GB RAM.")
         self.lang = QLineEdit(settings["language"])
         self.lang.setPlaceholderText("auto-detect  (or: en, es, …)")
+        self.vad = QCheckBox("Skip silence with a voice detector first (faster, but misses quiet speech in noisy audio)")
+        self.vad.setChecked(bool(settings.get("vad", False)))
         self.threads = QSpinBox()
         self.threads.setRange(0, 64)
         self.threads.setValue(settings["cpu_threads"])
         self.threads.setSpecialValueText("auto")
         f3.addRow("Whisper model", self.model)
         f3.addRow("Language", self.lang)
+        f3.addRow("", self.vad)
         f3.addRow("CPU threads", self.threads)
         lay.addWidget(g3)
 
@@ -92,7 +95,11 @@ class SettingsDialog(QDialog):
         self.det_model = QComboBox()
         self.det_model.addItem("YOLOX-s (accurate, ~0.15 s/frame)", "yolox_s")
         self.det_model.addItem("YOLOX-tiny (fast, ~0.05 s/frame)", "yolox_tiny")
-        self.det_model.setCurrentIndex(0 if settings.get("detector_model", "yolox_s") == "yolox_s" else 1)
+        self.det_model.setCurrentIndex(0 if settings.get("detector_model", "yolox_tiny") == "yolox_s" else 1)
+        self.face_model = QComboBox()
+        self.face_model.addItem("YuNet (fast)", "yunet")
+        self.face_model.addItem("CenterFace (better on small / side faces, slower)", "centerface")
+        self.face_model.setCurrentIndex(1 if settings.get("face_detector", "yunet") == "centerface" else 0)
         self.stride = QSpinBox()
         self.stride.setRange(1, 30)
         self.stride.setValue(settings["detect_stride"])
@@ -106,6 +113,7 @@ class SettingsDialog(QDialog):
         self.fconf.setSingleStep(0.05)
         self.fconf.setValue(settings["face_conf"])
         f4.addRow("Object model", self.det_model)
+        f4.addRow("Face model", self.face_model)
         f4.addRow("Detect every N frames", self.stride)
         f4.addRow("Object confidence", self.dconf)
         f4.addRow("Face confidence", self.fconf)
@@ -138,6 +146,8 @@ class SettingsDialog(QDialog):
         s["language"] = self.lang.text().strip()
         s["cpu_threads"] = self.threads.value()
         s["detector_model"] = self.det_model.currentData()
+        s["face_detector"] = self.face_model.currentData()
+        s["vad"] = self.vad.isChecked()
         s["detect_stride"] = self.stride.value()
         s["detect_conf"] = self.dconf.value()
         s["face_conf"] = self.fconf.value()
@@ -315,11 +325,45 @@ class NewBoxDialog(QDialog):
         gl.addLayout(rng)
         gl.addWidget(self.r_key)
         lay.addWidget(g)
+
+        g2 = QGroupBox("Tracking options")
+        f2 = QFormLayout(g2)
+        self.step = QComboBox()
+        self.step.addItem("Every 2nd frame (recommended)", 2)
+        self.step.addItem("Every frame (slower, most precise)", 1)
+        self.step.addItem("Every 3rd frame (fastest)", 3)
+        cur_step = int(settings.get("track_step", 2))
+        self.step.setCurrentIndex({2: 0, 1: 1, 3: 2}.get(cur_step, 0))
+        f2.addRow("Analyse", self.step)
+        self.backward = QCheckBox("Also look backward from here (covers the object before this frame)")
+        self.backward.setChecked(bool(settings.get("track_backward", True)))
+        f2.addRow("", self.backward)
+        self.stop_at = QDoubleSpinBox()
+        self.stop_at.setRange(0, duration)
+        self.stop_at.setDecimals(1)
+        self.stop_at.setValue(duration)
+        self.stop_at.setSuffix(" s")
+        self.stop_at.setToolTip("Stop tracking at this time. Shorter ranges finish sooner.")
+        f2.addRow("Stop at", self.stop_at)
+        lay.addWidget(g2)
+
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
         self.settings = settings
+
+    @property
+    def track_step(self) -> int:
+        return int(self.step.currentData())
+
+    @property
+    def track_backward(self) -> bool:
+        return self.backward.isChecked()
+
+    @property
+    def track_end_time(self) -> float:
+        return float(self.stop_at.value())
 
     def mode(self) -> str:
         if self.r_track.isChecked():
@@ -330,5 +374,7 @@ class NewBoxDialog(QDialog):
 
     def accept(self) -> None:
         self.settings["last_box_label"] = self.label.currentText().strip() or "other"
+        self.settings["track_step"] = self.track_step
+        self.settings["track_backward"] = self.track_backward
         self.settings.save()
         super().accept()

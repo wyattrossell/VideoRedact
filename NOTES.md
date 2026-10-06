@@ -62,6 +62,43 @@ undo/redo, real-footage QA, installer build has not been run yet.
   when frozen; override `VIDEOREDACT_MODELS`). Whisper models go in
   `models\whisper` via faster-whisper's `download_root`.
 
+## First real-footage feedback and fixes (2026-10-06 pm, v0.1.3)
+
+Wyatt tested v0.1.2 on body-cam footage (samples/, two Axon clips 720p30, 14 and
+47 min). Findings and what changed:
+
+- **Tracking unusably slow.** CSRT cost 72 ms/frame on real 720p (vs 20 on the
+  synthetic clip), the backward pass doubled it, and a resident ONNX Runtime
+  session made everything 2.5-5x slower still because ORT worker threads
+  spin-wait between inferences. Fixes in vision/tracker.py + detector.py:
+  KCF instead of CSRT; adaptive work-frame size so the object is ~110 px;
+  process every 2nd frame (interpolate); re-create the tracker only when a
+  correction moves the box (IoU < 0.85); ORT `intra_op.allow_spinning=0` and
+  4 intra-op threads; sparser search while lost; backward pass stops after
+  4 s lost. Result: 13 -> ~125 source fps with detector, ~200 without
+  (14-min clip ≈ 2-3 min, used to be ~30). Tracking now runs as a background
+  job and the box fills in live on the timeline; the UI stays usable.
+- **Transcription "did nothing".** Log showed Silero VAD removed 12 of 14
+  minutes as non-speech (traffic noise, quiet voices). VAD is now off by
+  default (setting), whisper's no-speech/filler filter drops hallucinations
+  ("you", "Thank you."), and segments stream into the transcript view as they
+  are recognised. Measured on the traffic stop: VAD on 137 words, off 199.
+- **Auto-detect found nothing.** Detectors work on the crash-scene clip (YuNet
+  @1280: 38 faces in 80 sampled frames; YOLOX-tiny: screens, phones). Most
+  likely the installed copy had no models (download blocked or cancelled).
+  The installer now **bundles all detection models + whisper small** (~550 MB
+  installer); `-NoModels` for a slim build. Face conf default 0.5, YuNet at
+  full 1280 px, YOLOX-tiny default, stride 5. CenterFace is wired as an
+  option but was slower (233 ms) and found fewer faces here; keep YuNet.
+- **"No selection on audio"**: drag on the timeline's Audio lane now creates
+  an audio redaction directly (no transcript needed).
+- Jobs dock (ui/jobs.py) replaces the modal progress dialog for transcribe,
+  track, detect, export and hashing; `partial()` streams results to the UI.
+- `--selftest --transcribe <media>` also checks speech recognition.
+
+Benchmarks live in NOTES "Performance reference"; scratch scripts were in the
+session scratchpad (bench_*.py) - recreate from the numbers if needed.
+
 ## Build, versioning, releases, auto-update (added 2026-10-06)
 
 - `installer\build.ps1` = the release button. It bumps the patch version
@@ -115,11 +152,15 @@ undo/redo, real-footage QA, installer build has not been run yet.
 
 ## Performance reference (i7-14700T laptop, CPU only)
 
-| Task | Speed |
+| Task (real 720p30 body-cam unless noted) | Speed |
 |---|---|
-| CSRT tracking @640 px | ~42-56 fps |
-| YOLOX-s @640 + YuNet, per detector pass | ~0.15-0.2 s |
-| faster-whisper small int8 | ~3.5x real time |
+| cv2 decode 720p / grab only | 777 / 2550 fps |
+| KCF update @512 (small box) | 3.4 ms; CSRT 72 ms; MOSSE 0.2 ms |
+| Tracker end-to-end, step 2, with YOLOX-tiny snaps | ~125 source fps (200 without detector) |
+| YuNet @1280 / @960 | 29 / 16 ms per frame |
+| YOLOX-tiny / YOLOX-s | 26 / 79 ms (with ORT spinning off) |
+| CenterFace @1280 | 233 ms (not default) |
+| faster-whisper small int8, VAD off | ~7x real time |
 | Export 640x360 (libx264 veryfast) | ~350 fps |
 
 ## Log

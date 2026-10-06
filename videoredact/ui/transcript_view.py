@@ -97,6 +97,28 @@ class TranscriptView(QWidget):
         self.text.moveCursor(QTextCursor.Start)
         self._update_count()
 
+    def append_segment(self, seg: Segment) -> None:
+        """Append one segment (used while transcription is still running)."""
+        if not self._words:
+            self.text.clear()
+        cur = self.text.textCursor()
+        cur.movePosition(QTextCursor.End)
+        cur.beginEditBlock()
+        tfmt = QTextCharFormat()
+        tfmt.setForeground(QColor(120, 120, 120))
+        tfmt.setFontPointSize(8.5)
+        cur.insertText(f"[{_fmt(seg.start)}]  ", tfmt)
+        for w in seg.words:
+            start = cur.position()
+            cur.insertText(w.text, self._fmt_for(w))
+            end = cur.position()
+            self._words.append(w)
+            self._ranges.append((start, end))
+            cur.insertText(" ", QTextCharFormat())
+        cur.insertBlock()
+        cur.endEditBlock()
+        self._update_count()
+
     def _fmt_for(self, w: Word) -> QTextCharFormat:
         f = QTextCharFormat()
         if self.project and self.project.word_is_redacted(w):

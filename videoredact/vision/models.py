@@ -39,6 +39,10 @@ MODELS: dict[str, ModelSpec] = {
         "yolox_s", "yolox_s.onnx",
         "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.onnx",
         "Apache-2.0", "COCO object detector: screens, laptops, phones, books, people (640px)", 30_000_000),
+    "vittrack": ModelSpec(
+        "vittrack", "object_tracking_vittrack_2023sep.onnx",
+        "https://github.com/opencv/opencv_zoo/raw/main/models/object_tracking_vittrack/object_tracking_vittrack_2023sep.onnx",
+        "Apache-2.0", "ViT single-object tracker (scale-adaptive, ~5 ms/frame on CPU)", 500_000),
     "yolox_tiny": ModelSpec(
         "yolox_tiny", "yolox_tiny.onnx",
         "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",

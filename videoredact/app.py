@@ -133,6 +133,17 @@ def selftest(media: str | None = None) -> int:
             return f"{r['output']} ({r['elapsed_s']:.1f}s), report {os.path.basename(r.get('report_pdf', ''))}"
         step("export (first 1 s redacted)", _export)
 
+        if "--detect" in sys.argv:
+            def _detect():
+                from videoredact.core.media import FrameReader
+                from videoredact.vision.auto_detect import AutoDetectOptions, run_auto_detect
+                with FrameReader(media) as r:
+                    end = min(r.frame_count, 1800)
+                    opts = AutoDetectOptions(labels=["face"], stride=5, end_frame=end, workers=2)
+                    tracks = run_auto_detect(r, opts, progress=lambda p, m: None)
+                return f"{len(tracks)} face track(s) in first {end} frames using 2 parallel workers"
+            step("auto-detect (parallel workers)", _detect)
+
         if "--transcribe" in sys.argv:
             def _transcribe():
                 from videoredact.audio.transcribe import Transcriber
@@ -165,6 +176,10 @@ def selftest(media: str | None = None) -> int:
 
 
 def main() -> None:
+    # Must be first: parallel detection uses multiprocessing (spawn); in a frozen build the
+    # child processes re-run this executable and freeze_support() hands control to them.
+    import multiprocessing
+    multiprocessing.freeze_support()
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     _setup_logging()
     _install_excepthook()

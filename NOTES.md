@@ -99,6 +99,40 @@ Wyatt tested v0.1.2 on body-cam footage (samples/, two Axon clips 720p30, 14 and
 Benchmarks live in NOTES "Performance reference"; scratch scripts were in the
 session scratchpad (bench_*.py) - recreate from the numbers if needed.
 
+## Round 3: speed + detection/tracking effectiveness (2026-10-06 night, v0.1.5)
+
+Wyatt asked to focus on performance and detection/tracking quality. Measured on
+samples/ (720p30 Axon clips), i7-14700T:
+
+- **Tracker: ViTTrack (opencv_zoo, Apache-2.0) is now default.** 5 ms/frame
+  regardless of box size (KCF was 15 ms on the laptop-screen box, CSRT 45),
+  and it adapts scale (KCF froze at the initial size). Models registered as
+  `vittrack`; KCF/CSRT remain selectable in Settings. NanoTrack does not load
+  in OpenCV 5's new ONNX importer; skipped. Note: OpenCV 5 exposes
+  `getTrackingScore()` on every tracker and KCF returns 0 -> only use the
+  score for ViT.
+- **Auto-detect rewrite** (vision/auto_detect.py): detections every N frames
+  with two-pass IoU association; tracks that miss a detection are *carried*
+  with ViTTrack from the exact last-detection frame (ring buffer) until
+  re-detected / lost / 3 s; confident-or-not single detections are kept
+  (recall first, flagged "single detection - review"); fragments within 1 s
+  and nearby are linked; **parallel chunk workers** (spawn, 4 on this box,
+  2-3 on an 8-core) merged by IoU at chunk boundaries. Detectors now get the
+  **full-resolution frame** (the 960 px copy lost ~7 % of small faces).
+  3-min crash-scene slice, faces: old pipeline 82 % of reference detections
+  covered @173 fps -> new 100 % @141 fps (parallel), fragments 127 -> 282
+  (because singles are kept; linking already merged adjacent ones).
+- **Post-export verification** (core/verify.py, Export dialog checkbox, on
+  by default): re-detect faces in the *output* every 15 frames, report any
+  detection < 60 % covered with timestamps; CSV sidecar; "Jump to first".
+  Borrowed from redactcam's coverage check.
+- Hardware encoders (QSV/NVENC/MF) are **not** faster than libx264 at 720p
+  (all ~400-500 fps) - export is decode/python bound; not pursued.
+- multiprocessing in the frozen build needs `multiprocessing.freeze_support()`
+  first thing in main() (done). `--selftest --detect <media>` exercises it.
+- Research reports saved: docs/RESEARCH-commercial.md, RESEARCH-legal.md,
+  RESEARCH-technical.md. Roadmap re-prioritised from them.
+
 ## Round 2 feedback (2026-10-06 evening, v0.1.4)
 
 - **"Warnings when changing options" + "video redaction not working"** were one
@@ -172,6 +206,10 @@ session scratchpad (bench_*.py) - recreate from the numbers if needed.
 | cv2 decode 720p / grab only | 777 / 2550 fps |
 | KCF update @512 (small box) | 3.4 ms; CSRT 72 ms; MOSSE 0.2 ms |
 | Tracker end-to-end, step 2, with YOLOX-tiny snaps | ~125 source fps (200 without detector) |
+| ViTTrack / KCF / CSRT update (large box @512) | 5 / 15 / 45 ms |
+| Auto-detect faces, stride 5, carry, 4 workers | ~140 source fps (single process ~85) |
+| Post-export face verification, every 15th frame | ~2x real time |
+| Hardware H.264 encoders vs libx264 @720p | no gain (400-500 fps all) |
 | YuNet @1280 / @960 | 29 / 16 ms per frame |
 | YOLOX-tiny / YOLOX-s | 26 / 79 ms (with ORT spinning off) |
 | CenterFace @1280 | 233 ms (not default) |

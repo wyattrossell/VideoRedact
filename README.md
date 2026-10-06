@@ -13,9 +13,14 @@ ordinary Windows PC (no GPU required). MIT licensed.
 
 **Video**
 - Automatic detection of faces (YuNet), screens / laptops, phones, documents,
-  people (YOLOX, COCO classes) with temporal linking into tracks.
-- Draw a box around anything and the object is tracked forward and backward,
-  and re-acquired when it leaves the frame and comes back later.
+  people (YOLOX) every few frames, linked into tracks and *carried* by a
+  tracker between detections so turned or blurred faces stay covered. Runs on
+  several CPU cores in parallel.
+- Draw a box around anything and the object is tracked forward and backward
+  (ViTTrack, scale-adaptive), and re-acquired when it leaves the frame and
+  comes back later.
+- Export verification: faces are re-detected in the redacted output and any
+  left visible are listed with timestamps before you release the file.
 - Fix a track by dragging its box; the correction becomes a keyframe.
 - Styles per region: solid black, blur, pixelate; rectangle or ellipse.
 

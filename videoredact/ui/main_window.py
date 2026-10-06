@@ -666,7 +666,7 @@ class MainWindow(QMainWindow):
         from videoredact.vision.tracker import TrackOptions
         opts = TrackOptions(step=int(step or settings.get("track_step", 2)),
                             backward=bool(settings.get("track_backward", True) if backward is None else backward),
-                            end_frame=end_frame)
+                            end_frame=end_frame, tracker=settings.get("tracker", "vit"))
         # live placeholder track
         live = VideoTrack(label=label, style=proto.style, shape=proto.shape, pad=proto.pad, source="tracked",
                           note="tracking in progress…")
@@ -761,6 +761,7 @@ class MainWindow(QMainWindow):
             return
         settings["detect_classes"] = labels
         settings["detect_stride"] = dlg.stride.value()
+        settings["detect_carry"] = dlg.carry.isChecked()
         settings.save()
         path = self.project.media.path
         from videoredact.vision.auto_detect import AutoDetectOptions, run_auto_detect
@@ -770,6 +771,7 @@ class MainWindow(QMainWindow):
         replace = dlg.replace.isChecked()
 
         opts.face_model = settings.get("face_detector", "yunet")
+        opts.carry = dlg.carry.isChecked()
         proj = self.project
 
         def job(prog, cancel, partial):
@@ -822,6 +824,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Export", "The output must be a different file from the source.")
             return
         settings["export_crf"], settings["export_preset"] = opts.crf, opts.preset
+        settings["verify_export"] = bool(opts.verify_labels)
         settings.save()
         proj = self.project
 
@@ -850,12 +853,31 @@ class MainWindow(QMainWindow):
             if "project" in res:
                 lines.append(f"Project: {res['project']}")
             lines.append(f"\nTook {res['elapsed_s']:.0f} s.")
-            box = QMessageBox(QMessageBox.Information, "Export complete", "\n".join(lines), parent=self)
+            vr = res.get("verify")
+            icon = QMessageBox.Information
+            if vr is not None:
+                if vr.uncovered:
+                    icon = QMessageBox.Warning
+                    lines.append(f"\nVERIFICATION: {len(vr.uncovered)} face detection(s) in the OUTPUT are not covered "
+                                 f"(checked {vr.frames_checked} frames). Review these times and add boxes:")
+                    for u in vr.uncovered[:12]:
+                        lines.append(f"   {fmt_time(u.time)}  {u.label} (conf {u.score:.2f}, {u.covered:.0%} covered)")
+                    if len(vr.uncovered) > 12:
+                        lines.append(f"   … {len(vr.uncovered) - 12} more in {res.get('verification_csv', '')}")
+                else:
+                    lines.append(f"\nVerification: no visible faces found in the output ({vr.frames_checked} frames checked).")
+            box = QMessageBox(icon, "Export complete", "\n".join(lines), parent=self)
+            if vr is not None and vr.uncovered:
+                jump = box.addButton("Jump to first", QMessageBox.ActionRole)
+            else:
+                jump = None
             open_btn = box.addButton("Open folder", QMessageBox.ActionRole)
             box.addButton(QMessageBox.Ok)
             box.exec()
             if box.clickedButton() == open_btn:
                 os.startfile(str(Path(res["output"]).parent))  # type: ignore[attr-defined]
+            elif jump is not None and box.clickedButton() == jump:
+                self.seek(vr.uncovered[0].time)
 
         self.jobs.run("Exporting redacted media", job, done, on_cancel=on_cancel)
 

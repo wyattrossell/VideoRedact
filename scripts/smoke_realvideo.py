@@ -71,13 +71,14 @@ assert len(w.video._boxes) == 1, "preview did not draw the tracked box"
 
 # 4. export the whole file and verify the box region is black inside the span, untouched outside
 out = Path(os.environ.get("TEMP", ".")) / "videoredact_realvideo_export.mp4"
-opts = ExportOptions(str(out), crf=28, preset="ultrafast", write_report=True, write_project=False)
+opts = ExportOptions(str(out), crf=28, preset="ultrafast", write_report=True, write_project=False, verify_labels=["face"])
 from videoredact.core.export import export_project
 t0 = time.time()
 res = {}
 w.jobs.run("Export", lambda prog, cancel, partial: export_project(w.project, opts, prog, cancel), lambda r_: res.update(r_))
 wait_jobs()
 print(f"export in {time.time()-t0:.0f}s -> {res.get('output')} sha={res.get('output_sha256', '')[:12]}")
+vr = res.get("verify"); print(f"verify: {vr.frames_checked} frames checked, {vr.detections} detections, {len(vr.uncovered)} uncovered" if vr else "verify: not run")
 with FrameReader(SRC) as a, FrameReader(str(out)) as b:
     f_in, f_out = a.read_at(start + 600), b.read_at(start + 600)
     box = tr.bbox_at(start + 600)

@@ -39,6 +39,7 @@ class ExportOptions:
     write_report: bool = True
     write_project: bool = True
     threads: int = 0  # 0 = ffmpeg default (all cores)
+    verify_labels: Optional[list] = None   # e.g. ["face"]: re-detect in the output and report uncovered hits
 
 
 class ExportCancelled(Exception):
@@ -168,6 +169,22 @@ def export_project(project: Project, opts: ExportOptions,
             write_pdf(project, pdf_p, result)
             result["report_csv"] = str(csv_p)
             result["report_pdf"] = str(pdf_p)
+        if opts.verify_labels:
+            prog(0.99, "Verifying the redacted output…")
+            from .verify import verify_output
+            vr = verify_output(str(out_path), project, labels=list(opts.verify_labels),
+                               progress=lambda p, m: prog(0.99 + 0.01 * p, m), cancel=cancel)
+            result["verify"] = vr
+            project.log("verify", f"{vr.frames_checked} frames checked, {vr.detections} detections, "
+                                  f"{len(vr.uncovered)} uncovered")
+            if vr.uncovered:
+                vpath = Path(str(out_path.with_suffix("")) + "_verification.csv")
+                with open(vpath, "w", encoding="utf-8", newline="") as f:
+                    f.write("time,frame,label,score,coverage,x,y,w,h\n")
+                    for u in vr.uncovered:
+                        f.write(f"{u.time:.2f},{u.frame},{u.label},{u.score:.2f},{u.covered:.2f},"
+                                f"{u.bbox.x:.4f},{u.bbox.y:.4f},{u.bbox.w:.4f},{u.bbox.h:.4f}\n")
+                result["verification_csv"] = str(vpath)
         prog(1.0, "Export complete")
         return result
     finally:

@@ -114,6 +114,13 @@ class SettingsDialog(QDialog):
         self.fconf.setValue(settings["face_conf"])
         f4.addRow("Object model", self.det_model)
         f4.addRow("Face model", self.face_model)
+        self.tracker = QComboBox()
+        self.tracker.addItem("ViTTrack (default: scale-adaptive, ~5 ms/frame)", "vit")
+        self.tracker.addItem("KCF (fastest, fixed box size)", "kcf")
+        self.tracker.addItem("CSRT (slow, legacy)", "csrt")
+        cur_tr = settings.get("tracker", "vit")
+        self.tracker.setCurrentIndex({"vit": 0, "kcf": 1, "csrt": 2}.get(cur_tr, 0))
+        f4.addRow("Box tracker", self.tracker)
         f4.addRow("Detect every N frames", self.stride)
         f4.addRow("Object confidence", self.dconf)
         f4.addRow("Face confidence", self.fconf)
@@ -147,6 +154,7 @@ class SettingsDialog(QDialog):
         s["cpu_threads"] = self.threads.value()
         s["detector_model"] = self.det_model.currentData()
         s["face_detector"] = self.face_model.currentData()
+        s["tracker"] = self.tracker.currentData()
         s["vad"] = self.vad.isChecked()
         s["detect_stride"] = self.stride.value()
         s["detect_conf"] = self.dconf.value()
@@ -187,6 +195,13 @@ class AutoDetectDialog(QDialog):
         self.stride.setRange(1, 30)
         self.stride.setValue(settings["detect_stride"])
         f.addRow("Detect every N frames", self.stride)
+        self.carry = QCheckBox("Follow each object between detections with the tracker (covers turned/blurred faces)")
+        self.carry.setChecked(bool(settings.get("detect_carry", True)))
+        f.addRow("", self.carry)
+        import os as _os
+        self.workers_lbl = QLabel(f"Runs on {max(1, min(4, (_os.cpu_count() or 4) // 2))} CPU workers in parallel.")
+        self.workers_lbl.setStyleSheet("color: gray")
+        f.addRow("", self.workers_lbl)
         self.replace = QCheckBox("Remove previous automatic results first")
         self.replace.setChecked(True)
         lay.addLayout(f)
@@ -244,9 +259,13 @@ class ExportDialog(QDialog):
         self.report.setChecked(True)
         self.proj = QCheckBox("Write project file (.vrproj) next to the output")
         self.proj.setChecked(True)
+        self.verify = QCheckBox("Verify: re-detect faces in the redacted output and list any left visible (recommended)")
+        self.verify.setChecked(bool(settings.get("verify_export", True)) and project.media.has_video)
+        self.verify.setEnabled(project.media.has_video)
         lay.addLayout(f)
         lay.addWidget(self.report)
         lay.addWidget(self.proj)
+        lay.addWidget(self.verify)
         n_a = sum(1 for r in project.audio_redactions if r.enabled)
         n_v = sum(1 for t in project.video_tracks if t.enabled)
         lay.addWidget(QLabel(f"{n_a} audio redaction(s) and {n_v} video region(s) will be applied. "
@@ -272,6 +291,7 @@ class ExportDialog(QDialog):
             o.preset = self.preset.currentText()
         o.write_report = self.report.isChecked()
         o.write_project = self.proj.isChecked()
+        o.verify_labels = ["face"] if self.verify.isChecked() else None
         return o
 
 

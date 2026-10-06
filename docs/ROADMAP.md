@@ -1,7 +1,25 @@
 # Roadmap
 
 Ordered roughly by value to an agency user. Tick items off and move them to
-NOTES.md "Current state" when done.
+NOTES.md "Current state" when done. The research behind the ordering is in
+docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
+
+## Done in v0.1.5 (performance round)
+- [x] ViTTrack default tracker (scale-adaptive, 5 ms/frame); KCF/CSRT selectable.
+- [x] Auto-detect: carry tracks through missed detections, keep single detections, link fragments, parallel workers, full-res detection.
+- [x] Post-export verification pass (re-detect faces in the output, list uncovered hits).
+
+## Top 10 next, drawn from the commercial / legal / technical research
+1. **Review queue** for auto-detections: list every track with a thumbnail, jump-to, approve/delete, "mark all reviewed", keyboard F / Shift+F to step through (Axon/Motorola pattern). Biggest reviewer time saver. (M)
+2. **Exemption code + reason per redaction**, state pick-lists, exemption log in the PDF/CSV (FOIA 552(b), RCW 42.56.210). (S)
+3. **Full-frame blackout / blur for a time range** with audio drop, one click (MDT screens, residence interiors). (S)
+4. **Unique-person gallery**: cluster face tracks with SFace embeddings (OpenCV, permissive) so one click redacts a person everywhere; "redact everyone except the subject". (L)
+5. **OpenVINO execution provider** for the detectors on Intel CPUs/iGPUs (1.3-4x). (S)
+6. **License plate detector**: open-image-models YOLOv9-t (MIT) after checking training-data terms. (S)
+7. **Audio: speaker diarization** via sherpa-onnx (mute one voice), **keyword spotting**, whisper large-v3-turbo as "accurate" mode, loudnorm pre-pass. (M)
+8. **Axon-style shortcuts** (A/D frame step with hold, Q/E 2 s, W/S resize, [ ] trim to playhead, hold M for audio) + in/out trim and clip-only export. (S)
+9. **Tamper-evident audit log** (hash-chained, Windows user) + review/approval state + per-request work timer (cost recovery). (M)
+10. **Batch queue** with presets, overnight run, watch folder (CaseGuard pattern). (M)
 
 ## Next up
 - [x] First QA on real body-cam footage (720p30, 14 + 47 min Axon clips) -> v0.1.3 speed/VAD/model fixes.

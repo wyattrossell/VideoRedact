@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "videoredact"
-version = "0.1.6"
+version = "0.1.7"
 description = "Offline video/audio redaction tool for law enforcement: transcript-driven audio redaction, automatic and tracked video redaction."
 readme = "README.md"
 license = { text = "MIT" }

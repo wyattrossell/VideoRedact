@@ -23,3 +23,9 @@ models/whisper/
 *.vrproj
 installer/Output/
 .claude/settings.local.json
+# build outputs
+Published/
+bin/
+dist/
+build/
+*.spec.bak

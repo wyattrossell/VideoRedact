@@ -32,9 +32,9 @@ _CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
 def app_root() -> Path:
-    """Directory holding bundled resources (PyInstaller) or the repo root."""
+    """Directory holding bundled resources (PyInstaller _internal) or the repo root."""
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
     return Path(__file__).resolve().parents[2]
 
 
@@ -42,9 +42,11 @@ def ffmpeg_exe() -> str:
     env = os.environ.get("VIDEOREDACT_FFMPEG")
     if env and Path(env).exists():
         return env
-    bundled = app_root() / "bin" / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
-    if bundled.exists():
-        return str(bundled)
+    exe_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+    for base in (app_root(), Path(sys.executable).parent):
+        bundled = base / "bin" / exe_name
+        if bundled.exists():
+            return str(bundled)
     on_path = shutil.which("ffmpeg")
     if on_path:
         return on_path

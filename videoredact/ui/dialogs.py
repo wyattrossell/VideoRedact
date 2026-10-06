@@ -112,14 +112,13 @@ class SettingsDialog(QDialog):
         f4.addRow("Models folder", QLabel(str(models_dir())))
         lay.addWidget(g4)
 
-        g5 = QGroupBox("Playback (preview only; export always uses FFmpeg)")
+        g5 = QGroupBox("Updates")
         f5 = QFormLayout(g5)
-        self.backend = QComboBox()
-        self.backend.addItem("Windows Media Foundation (default on Windows)", "windows")
-        self.backend.addItem("FFmpeg (more formats; stalls with audio on some PCs)", "ffmpeg")
-        cur = settings.get("media_backend") or "windows"
-        self.backend.setCurrentIndex(0 if cur == "windows" else 1)
-        f5.addRow("Preview backend (restart required)", self.backend)
+        self.updates = QCheckBox("Check GitHub for a newer version at startup")
+        self.updates.setChecked(bool(settings.get("check_updates", True)))
+        self.updates.setToolTip("Only the version number of the latest release is requested from GitHub. "
+                                "No media or project data is ever sent.")
+        f5.addRow(self.updates)
         lay.addWidget(g5)
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -142,7 +141,9 @@ class SettingsDialog(QDialog):
         s["detect_stride"] = self.stride.value()
         s["detect_conf"] = self.dconf.value()
         s["face_conf"] = self.fconf.value()
-        s["media_backend"] = self.backend.currentData()
+        s["check_updates"] = self.updates.isChecked()
+        if self.updates.isChecked():
+            s["skip_version"] = ""
         s.save()
         if self.project:
             self.project.author = s["author"]

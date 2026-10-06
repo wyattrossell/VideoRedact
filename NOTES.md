@@ -62,10 +62,47 @@ undo/redo, real-footage QA, installer build has not been run yet.
   when frozen; override `VIDEOREDACT_MODELS`). Whisper models go in
   `models\whisper` via faster-whisper's `download_root`.
 
+## Build, versioning, releases, auto-update (added 2026-10-06)
+
+- `installer\build.ps1` = the release button. It bumps the patch version
+  (`scripts\bump_version.py`, single source of truth `videoredact/__init__.py`,
+  mirrored to pyproject.toml), builds with PyInstaller (one-folder, spec in
+  installer/), compiles the Inno Setup installer into `Published\`, writes
+  `latest.json` + `SHA256SUMS.txt`, commits "Release X.Y.Z", tags `vX.Y.Z`,
+  pushes. `-Publish` (or `scripts\publish_release.ps1`) creates the GitHub
+  release and uploads the installer. The publish script uses `gh` if present,
+  else the token Git Credential Manager already holds for github.com.
+- `Published\` and `bin\` are git-ignored (installer ~hundreds of MB; GitHub
+  file limit is 100 MB). Releases are the distribution channel.
+- Auto-update lives in `videoredact/updater.py` + `MainWindow.check_for_updates`.
+  It reads `releases/latest`, looks for an asset named exactly
+  `VideoRedact-X.Y.Z-Setup.exe`, downloads to %TEMP%, runs it with
+  `/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`, and quits. Inno `AppId`
+  must never change or upgrades become side-by-side installs.
+- Installer is `PrivilegesRequired=lowest` so standard users can install and
+  auto-update per-user (`%LocalAppData%\Programs\VideoRedact`); admins get the
+  all-users choice in the dialog.
+- Frozen build: data files live in `_internal\` (`sys._MEIPASS`); `paths.resource_root()`
+  and `media.ffmpeg_exe()` look there. stdout/stderr go to
+  `%LocalAppData%\VideoRedact\logs\videoredact.log` (Help ▸ Open log folder);
+  uncaught exceptions show a dialog and are logged.
+- FFmpeg shipped in the installer: `bin\ffmpeg.exe`. Test builds copy the
+  imageio-ffmpeg binary (a GPL build). Before wide distribution drop an LGPL
+  build there (BtbN "lgpl" variants) so the whole package stays permissive.
+- Inno Setup on this laptop installed per-user via winget:
+  `%LocalAppData%\Programs\Inno Setup 6\ISCC.exe` (build.ps1 checks that path too).
+
 ## Gotchas
 
-- Store Python virtualizes `%LOCALAPPDATA%`; HF cache warnings about symlinks
-  are harmless (set HF_HUB_DISABLE_SYMLINKS_WARNING=1, done in app.py).
+- Store Python virtualizes `%LOCALAPPDATA%`: anything the venv writes to
+  `C:\Users\<you>\AppData\Local\VideoRedact` really lands in
+  `...\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_*\LocalCache\Local\VideoRedact`.
+  The frozen EXE (a normal process) sees the real folder, so models downloaded
+  while developing are invisible to the installed app and vice versa. Copy them
+  across or use a python.org interpreter for the venv. HF symlink warnings are
+  harmless (HF_HUB_DISABLE_SYMLINKS_WARNING=1 is set in app.py).
+- `VideoRedact.exe --selftest [--quiet] [media]` verifies an installation
+  (ffmpeg, libs, models, detectors, export) and writes the report to the log.
 - ffmpeg `drawbox` does not evaluate `t` per frame in 7.1; the sample
   generator draws frames with OpenCV and pipes them to ffmpeg instead.
 - Pixelating a solid-colour object leaves it the same colour (by design);

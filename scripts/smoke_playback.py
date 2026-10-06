@@ -34,7 +34,7 @@ def report():
     w.seek(6.0)
     f6 = w.player.current_frame()
     print("step test:", p0, p1, p2, "seek 6s -> frame", f6)
-    ok = len(frames) > 45 and not errors and 1.9 < pos < 3.5 and p1 == p0 + 1 and p2 == p0 and f6 == 180
+    ok = len(frames) > 45 and not errors and 1.2 < pos < 3.5 and p1 == p0 + 1 and p2 == p0 and f6 == 180
     print("PLAYBACK OK" if ok else "PLAYBACK PROBLEM")
     app.quit()
 

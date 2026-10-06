@@ -17,9 +17,24 @@ APP_NAME = "VideoRedact"
 
 
 def app_root() -> Path:
+    """Directory of the executable (frozen) or the repo root (source)."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
     return Path(__file__).resolve().parents[1]
+
+
+def resource_root() -> Path:
+    """Where bundled read-only resources (bin/, models/) live.
+    PyInstaller one-folder builds put data files in _internal (sys._MEIPASS)."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    return app_root()
+
+
+def log_dir() -> Path:
+    d = user_data_dir() / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def user_data_dir() -> Path:
@@ -35,9 +50,9 @@ def models_dir() -> Path:
         p = Path(env)
         p.mkdir(parents=True, exist_ok=True)
         return p
-    bundled = app_root() / "models"
-    if getattr(sys, "frozen", False) and bundled.exists():
-        return bundled
+    for bundled in (resource_root() / "models", app_root() / "models"):
+        if getattr(sys, "frozen", False) and bundled.exists() and any(bundled.iterdir()):
+            return bundled
     d = user_data_dir() / "models"
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -70,8 +85,10 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "export_preset": "veryfast",
     "cpu_threads": 0,               # 0 = auto
     "tracker": "csrt",
-    "media_backend": "",            # "" = platform default (windows on Win32, else ffmpeg)
+    "media_backend": "",            # unused since the custom player; kept for settings compatibility
     "detector_model": "yolox_s",
+    "check_updates": True,          # ask GitHub Releases for a newer installer at startup
+    "skip_version": "",             # user chose "skip this version"
 }
 
 

@@ -8,13 +8,13 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QTimer, QThread, Signal, QObject
 from PySide6.QtGui import QAction, QKeySequence, QIcon
 from PySide6.QtWidgets import (QApplication, QComboBox, QDockWidget, QFileDialog, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar, QStyle, QTabWidget,
                                QToolBar, QVBoxLayout, QWidget, QInputDialog, QDialog)
 
-from videoredact import __version__
+from videoredact import __version__, updater
 from videoredact.audio.pii import suggest_pii
 from videoredact.audio.transcribe import find_matches, words_in_range
 from videoredact.core.media import MEDIA_FILTER, FrameReader, decode_audio, probe, sha256_file
@@ -166,6 +166,8 @@ class MainWindow(QMainWindow):
         m.addAction(act("Download detection &models", self.download_models))
         m = mb.addMenu("&Help")
         m.addAction(act("&Quick guide", self.quick_guide, "F1"))
+        m.addAction(act("Check for &updates…", lambda: self.check_for_updates(manual=True)))
+        m.addAction(act("Open &log folder", self.open_log_folder))
         m.addAction(act("&About", self.about))
 
         tb = QToolBar("Main")
@@ -809,6 +811,88 @@ class MainWindow(QMainWindow):
         run_task(self, "Downloading detection models…", job,
                  lambda ok: ok and QMessageBox.information(self, "Models", f"All detection models are available in\n{reg.models_dir()}"))
 
+    # ------------------------------------------------------------- updates
+    def schedule_update_check(self) -> None:
+        """Called once after the window is shown. Checks GitHub Releases in the
+        background a few seconds after startup, if enabled in settings."""
+        if settings.get("check_updates", True):
+            QTimer.singleShot(4000, lambda: self.check_for_updates(manual=False))
+
+    def check_for_updates(self, manual: bool) -> None:
+        class _Checker(QThread):
+            result = Signal(object, str)
+
+            def run(self_):
+                try:
+                    self_.result.emit(updater.fetch_latest(), "")
+                except Exception as e:  # noqa: BLE001
+                    self_.result.emit(None, str(e))
+
+        self._update_checker = _Checker(self)
+        self._update_checker.result.connect(lambda info, err: self._on_update_result(info, err, manual))
+        self._update_checker.start()
+        if manual:
+            self.statusBar().showMessage("Checking for updates…", 5000)
+
+    def _on_update_result(self, info, err: str, manual: bool) -> None:
+        if err:
+            if manual:
+                QMessageBox.warning(self, "Check for updates",
+                                    f"Could not reach GitHub to check for updates.\n\n{err}\n\n"
+                                    f"Releases page: {updater.RELEASES_PAGE}")
+            return
+        if info is None or not updater.is_newer(info.version):
+            if manual:
+                QMessageBox.information(self, "Check for updates",
+                                        f"You are running the latest version ({__version__}).")
+            return
+        if not manual and settings.get("skip_version") == info.version:
+            return
+        notes = (info.notes or "").strip()
+        if len(notes) > 1200:
+            notes = notes[:1200] + "…"
+        box = QMessageBox(QMessageBox.Information, "Update available",
+                          f"VideoRedact {info.version} is available (you have {__version__}).\n\n"
+                          + (f"{notes}\n\n" if notes else "")
+                          + "Install it now? The application will close, update and reopen.", parent=self)
+        b_install = box.addButton("Install now", QMessageBox.AcceptRole)
+        b_later = box.addButton("Later", QMessageBox.RejectRole)
+        b_skip = box.addButton("Skip this version", QMessageBox.DestructiveRole)
+        box.setDefaultButton(b_install)
+        box.exec()
+        if box.clickedButton() == b_skip:
+            settings["skip_version"] = info.version
+            settings.save()
+        elif box.clickedButton() == b_install:
+            self._install_update(info)
+
+    def _install_update(self, info) -> None:
+        if not info.url:
+            QMessageBox.information(self, "Update", f"This release has no installer attached yet.\nSee {info.page}")
+            return
+        if not self._confirm_discard():
+            return
+
+        def job(prog, cancel):
+            return updater.download(info, prog, cancel)
+
+        def done(path):
+            if not path:
+                return
+            self.dirty = False
+            try:
+                updater.launch_installer(path, restart=True)
+            except Exception as e:  # noqa: BLE001
+                QMessageBox.critical(self, "Update", f"Could not start the installer:\n{e}\n\nIt was saved to:\n{path}")
+                return
+            QApplication.instance().quit()
+
+        run_task(self, f"Downloading VideoRedact {info.version}…", job, done)
+
+    def open_log_folder(self) -> None:
+        from videoredact.paths import log_dir
+        os.startfile(str(log_dir()))  # type: ignore[attr-defined]
+
     def quick_guide(self) -> None:
         QMessageBox.information(self, "Quick guide", """
 <b>1. Open</b> a video or audio file (File ▸ Open media).<br>
@@ -827,7 +911,8 @@ Drag a box to fix its position: that adds a keyframe. Delete false hits in the R
     def about(self) -> None:
         QMessageBox.about(self, "About VideoRedact",
                           f"<b>VideoRedact {__version__}</b><br>Free, offline video and audio redaction for law enforcement.<br>"
-                          "MIT License. Runs entirely on this computer; no data leaves the machine.<br><br>"
+                          "MIT License. Runs entirely on this computer; no media data leaves the machine "
+                          "(the only network access is the optional update check against GitHub).<br><br>"
                           "Components: FFmpeg (LGPL build), OpenCV, ONNX Runtime, faster-whisper, YuNet, YOLOX, Qt/PySide6 (LGPL).")
 
     def keyPressEvent(self, event):

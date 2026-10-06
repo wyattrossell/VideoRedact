@@ -49,6 +49,29 @@ FFmpeg: the dev environment uses the binary from the `imageio-ffmpeg` wheel.
 The installer ships an LGPL build in `bin\ffmpeg.exe`. Override with
 `VIDEOREDACT_FFMPEG=<path>`.
 
+## Building the installer and publishing a release
+
+```powershell
+winget install JRSoftware.InnoSetup            # once per machine
+C:\dev\venv-videoredact\Scripts\python -m pip install pyinstaller
+.\installer\build.ps1                           # bump patch version, build, write Published\VideoRedact-<ver>-Setup.exe,
+                                                # commit "Release <ver>", tag v<ver>, push
+.\installer\build.ps1 -Publish                  # ...and also create the GitHub release with the installer attached
+.\scripts\publish_release.ps1                   # publish the last build separately
+```
+
+Every build gets a new version number (patch increment by default; `-Bump minor`
+or `-Bump major`, `-NoBump` to rebuild the current version). Output goes to
+`Published\` (git-ignored because installers are hundreds of MB) together with
+`latest.json` and `SHA256SUMS.txt`.
+
+**Auto-update:** installed copies check the latest GitHub release a few seconds
+after startup (and from Help ▸ Check for updates). If a newer
+`VideoRedact-X.Y.Z-Setup.exe` asset exists, the user is offered *Install now*;
+the installer is downloaded to %TEMP%, run silently, closes and reopens the app.
+Only the public release metadata is requested from GitHub; media never leaves
+the machine. The check can be turned off in Settings ▸ Updates.
+
 ## Tests
 
 ```powershell

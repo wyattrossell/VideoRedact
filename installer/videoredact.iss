@@ -1,32 +1,42 @@
 ; Inno Setup script for VideoRedact. Built by installer\build.ps1 which passes /DAppVersion=x.y.z
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.0.0"
 #endif
 #define AppName "VideoRedact"
 #define AppPublisher "VideoRedact project"
 #define AppURL "https://github.com/wyattrossell/VideoRedact"
 
 [Setup]
-AppId={{7E1D4C1A-5B1E-4F2B-9D4E-VIDEOREDACT01}
+; AppId must never change: it is how upgrades (including the in-app auto-update) find the existing install.
+AppId={{B5E7C6D2-3A4F-4E0B-9C21-5D8F1A2B3C4D}
 AppName={#AppName}
 AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
+VersionInfoVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}/issues
+AppUpdatesURL={#AppURL}/releases
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 LicenseFile=..\LICENSE
-OutputDir=Output
+OutputDir=..\Published
 OutputBaseFilename=VideoRedact-{#AppVersion}-Setup
-Compression=lzma2/ultra64
+SetupIconFile=videoredact.ico
+Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog
+; "lowest" lets a standard user install/update into %LocalAppData%\Programs without UAC,
+; which is what the in-app auto-update needs. Admins can still pick "all users" from the dialog.
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog commandline
 UninstallDisplayIcon={app}\VideoRedact.exe
 ChangesAssociations=yes
+CloseApplications=yes
+RestartApplications=yes
+DisableProgramGroupPage=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -51,3 +61,6 @@ Root: HKA; Subkey: "Software\Classes\VideoRedact.Project\shell\open\command"; Va
 
 [Run]
 Filename: "{app}\VideoRedact.exe"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\_internal"

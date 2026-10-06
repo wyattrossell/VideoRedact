@@ -165,6 +165,12 @@ session scratchpad (bench_*.py) - recreate from the numbers if needed.
 
 ## Log
 
+- 2026-10-06 (late pm): v0.1.3 built (632 MB, models bundled), published,
+  installed per-user and self-tested offline incl. speech recognition on the
+  real traffic-stop clip (48 words in first 90 s, 29 s). Installed copy on this
+  laptop: 0.1.3. Export of the full 14-min 720p clip in the frozen build took
+  166 s (~150 fps).
+
 - 2026-10-06 (pm): Release pipeline done. v0.1.1 and v0.1.2 built, installed
   per-user, self-tested, published to GitHub Releases. Verified the real update
   path: installed 0.1.1 -> fetch latest -> download 0.1.2 -> silent upgrade ->

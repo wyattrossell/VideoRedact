@@ -129,9 +129,10 @@ def selftest(media: str | None = None) -> int:
             if p.media.has_video:
                 p.add_video_track(VideoTrack(label="test", spans=[Span(0, 30, {0: BBox(.1, .1, .3, .3)})]))
             out = os.path.join(tempfile.gettempdir(), "videoredact_selftest.mp4" if p.media.has_video else "videoredact_selftest.m4a")
-            r = export_project(p, ExportOptions(out, write_report=True, write_project=False))
-            return f"{r['output']} ({r['elapsed_s']:.1f}s), report {os.path.basename(r.get('report_pdf', ''))}"
-        step("export (first 1 s redacted)", _export)
+            r = export_project(p, ExportOptions(out, write_report=True, write_project=False,
+                                                end_s=min(20.0, p.media.duration or 20.0)))
+            return f"{r['output']} first 20 s ({r['elapsed_s']:.1f}s), report {os.path.basename(r.get('report_pdf', ''))}"
+        step("export (20 s clip, first 1 s redacted)", _export)
 
         if "--detect" in sys.argv:
             def _detect():

@@ -76,6 +76,13 @@ def write_pdf(project: Project, path: str | Path, result: dict | None = None) ->
     if result:
         meta += [["Output file", Paragraph(result.get("output", ""), mono)],
                  ["Output SHA-256", Paragraph(result.get("output_sha256", ""), mono)]]
+        if result.get("clip"):
+            a, b = result["clip"]
+            meta.append(["Exported range", f"{fmt_time(a)} - {fmt_time(b) if b is not None else 'end of recording'} of the source"])
+        vr = result.get("verify")
+        if vr is not None:
+            meta.append(["Output verification", f"{vr.frames_checked} frames re-scanned for {', '.join(vr.labels)}; "
+                                                f"{len(vr.uncovered)} detection(s) not covered by a redaction"])
     if project.notes:
         meta.append(["Notes", Paragraph(project.notes, small)])
     t = Table(meta, colWidths=[1.6 * inch, 7.8 * inch])

@@ -255,6 +255,30 @@ class ExportDialog(QDialog):
             self.preset.addItems(["ultrafast", "veryfast", "medium", "slow"])
             self.preset.setCurrentText(settings.get("export_preset", "veryfast"))
             f.addRow("Encoder speed", self.preset)
+        self.clip = QCheckBox("Export only a time range (clip)")
+        self.clip.setChecked(False)
+        rng = QHBoxLayout()
+        self.t0 = QDoubleSpinBox()
+        self.t0.setRange(0, max(0.0, project.media.duration))
+        self.t0.setDecimals(1)
+        self.t0.setSuffix(" s")
+        self.t1 = QDoubleSpinBox()
+        self.t1.setRange(0, max(0.0, project.media.duration))
+        self.t1.setDecimals(1)
+        self.t1.setValue(project.media.duration)
+        self.t1.setSuffix(" s")
+        for wdg in (self.t0, self.t1):
+            wdg.setEnabled(False)
+        self.clip.toggled.connect(lambda on: [w_.setEnabled(on) for w_ in (self.t0, self.t1)])
+        rng.addWidget(self.clip)
+        rng.addWidget(QLabel("from"))
+        rng.addWidget(self.t0)
+        rng.addWidget(QLabel("to"))
+        rng.addWidget(self.t1)
+        rng.addStretch(1)
+        cw = QWidget()
+        cw.setLayout(rng)
+        f.addRow("Range", cw)
         self.report = QCheckBox("Write redaction report (PDF + CSV) next to the output")
         self.report.setChecked(True)
         self.proj = QCheckBox("Write project file (.vrproj) next to the output")
@@ -292,6 +316,9 @@ class ExportDialog(QDialog):
         o.write_report = self.report.isChecked()
         o.write_project = self.proj.isChecked()
         o.verify_labels = ["face"] if self.verify.isChecked() else None
+        if self.clip.isChecked():
+            a, b = sorted((self.t0.value(), self.t1.value()))
+            o.start_s, o.end_s = a, b
         return o
 
 

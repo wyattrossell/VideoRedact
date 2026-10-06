@@ -61,7 +61,8 @@ def _coverage(det: BBox, boxes: list[BBox]) -> float:
 
 def verify_output(output_path: str, project: Project, labels: Optional[list[str]] = None,
                   stride: int = 15, min_cover: float = 0.6, face_conf: float = 0.5,
-                  progress: Optional[ProgressCB] = None, cancel: Optional[CancelCB] = None) -> VerifyResult:
+                  progress: Optional[ProgressCB] = None, cancel: Optional[CancelCB] = None,
+                  frame_offset: int = 0) -> VerifyResult:
     """Scan the exported file every `stride` frames. A detection counts as
     uncovered when less than `min_cover` of it lies inside enabled redaction
     boxes for that frame (padding included). Detectors run on the redacted
@@ -90,14 +91,15 @@ def verify_output(output_path: str, project: Project, labels: Optional[list[str]
                 dets = det.detect(frame)
                 if dets:
                     red = []
-                    for t, bb in boxes_at(tracks, idx):
+                    for t, bb in boxes_at(tracks, idx + frame_offset):
                         x0, y0, x1, y1 = bb.to_pixels(W, H, t.pad)
                         red.append(BBox.from_pixels(x0, y0, x1, y1, W, H))
                     for d in dets:
                         n_det += 1
                         cov = _coverage(d.bbox, red)
                         if cov < min_cover:
-                            found.append(Finding(idx, idx / fps, d.label, d.bbox, d.score, cov))
+                            src_idx = idx + frame_offset
+                            found.append(Finding(src_idx, src_idx / fps, d.label, d.bbox, d.score, cov))
                 if progress and checked % 10 == 0:
                     progress(min(0.999, idx / total), f"Verifying frame {idx}/{total}: {len(found)} uncovered so far")
             idx += 1

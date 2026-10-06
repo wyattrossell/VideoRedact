@@ -848,6 +848,9 @@ class MainWindow(QMainWindow):
                 return
             self.dirty = True
             lines = [f"Redacted media written to:\n{res['output']}", f"SHA-256: {res['output_sha256']}"]
+            if res.get("clip"):
+                a, b = res["clip"]
+                lines.append(f"Clip: {fmt_time(a)} - {fmt_time(b) if b is not None else 'end'} (a slate is NOT inserted; note the range in your release letter)")
             if "report_pdf" in res:
                 lines.append(f"\nReport: {res['report_pdf']}\n        {res['report_csv']}")
             if "project" in res:

@@ -40,6 +40,8 @@ class ExportOptions:
     write_project: bool = True
     threads: int = 0  # 0 = ffmpeg default (all cores)
     verify_labels: Optional[list] = None   # e.g. ["face"]: re-detect in the output and report uncovered hits
+    start_s: float = 0.0                   # clip range (seconds); end_s None = to the end
+    end_s: Optional[float] = None
 
 
 class ExportCancelled(Exception):
@@ -75,16 +77,30 @@ def export_project(project: Project, opts: ExportOptions,
     result: dict = {"output": str(out_path)}
 
     try:
+        # ---------------- clip range ----------------
+        fps_info = info.fps or 30.0
+        clip_start = max(0.0, float(opts.start_s or 0.0))
+        clip_end = float(opts.end_s) if opts.end_s is not None else None
+        if clip_end is not None and info.duration and clip_end > info.duration:
+            clip_end = info.duration
+        is_clip = clip_start > 0 or (clip_end is not None and info.duration and clip_end < info.duration - 0.01)
+        f_start = int(round(clip_start * fps_info))
+        f_end = int(round(clip_end * fps_info)) if clip_end is not None else None
+        if is_clip:
+            result["clip"] = (clip_start, clip_end)
+            project.log("export_clip", f"{clip_start:.2f}s - {clip_end if clip_end is not None else 'end'}s")
+
         # ---------------- audio ----------------
         has_audio = info.has_audio
         if has_audio:
             prog(0.01, "Decoding audio")
-            samples, sr = decode_audio(src)
+            samples, sr = decode_audio(src, start=clip_start if is_clip else None,
+                                       duration=(clip_end - clip_start) if (is_clip and clip_end is not None) else None)
             check_cancel()
             prog(0.04, "Applying audio redactions")
             samples = audio_redact.apply_redactions(
                 samples, sr, project.audio_redactions, project.default_audio_style,
-                project.beep_frequency, pad_s=opts.audio_pad_s)
+                project.beep_frequency, pad_s=opts.audio_pad_s, start_time=clip_start)
             write_wav(wav_path, samples, sr)
             del samples
             check_cancel()
@@ -95,7 +111,9 @@ def export_project(project: Project, opts: ExportOptions,
             with FrameReader(src) as reader:
                 W, H = reader.width, reader.height
                 fps = info.fps or reader.fps
-                total = reader.frame_count or info.frame_count or 1
+                total_all = reader.frame_count or info.frame_count or 1
+                f_last = min(f_end, total_all) if f_end is not None else total_all
+                total = max(1, f_last - f_start)
                 cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y",
                        "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{W}x{H}", "-r", f"{fps:.6f}",
                        "-i", "pipe:0"]
@@ -116,12 +134,12 @@ def export_project(project: Project, opts: ExportOptions,
                 tracks = [t for t in project.video_tracks if t.enabled]
                 last_prog = 0.0
                 try:
-                    for idx, frame in reader.iter_frames():
+                    for idx, frame in reader.iter_frames(f_start, f_last):
                         if tracks:
                             video_redact.redact_frame(frame, tracks, idx, project.default_video_style)
                         proc.stdin.write(frame.tobytes())
                         if idx % 15 == 0:
-                            p = 0.06 + 0.90 * min(1.0, idx / total)
+                            p = 0.06 + 0.90 * min(1.0, (idx - f_start) / total)
                             if p - last_prog > 0.002:
                                 prog(p, f"Encoding frame {idx}/{total}")
                                 last_prog = p
@@ -173,7 +191,8 @@ def export_project(project: Project, opts: ExportOptions,
             prog(0.99, "Verifying the redacted output…")
             from .verify import verify_output
             vr = verify_output(str(out_path), project, labels=list(opts.verify_labels),
-                               progress=lambda p, m: prog(0.99 + 0.01 * p, m), cancel=cancel)
+                               progress=lambda p, m: prog(0.99 + 0.01 * p, m), cancel=cancel,
+                               frame_offset=f_start if info.has_video else 0)
             result["verify"] = vr
             project.log("verify", f"{vr.frames_checked} frames checked, {vr.detections} detections, "
                                   f"{len(vr.uncovered)} uncovered")

@@ -180,6 +180,10 @@ session scratchpad (bench_*.py) - recreate from the numbers if needed.
 
 ## Log
 
+- 2026-10-06 (evening): v0.1.4 built, published, installed per-user, self-test
+  OK. Installed copy on this laptop: 0.1.4. Fixes the str-enum crash behind
+  "warnings when changing options" and tracking not starting.
+
 - 2026-10-06 (late pm): v0.1.3 built (632 MB, models bundled), published,
   installed per-user and self-tested offline incl. speech recognition on the
   real traffic-stop clip (48 words in first 90 s, 29 s). Installed copy on this

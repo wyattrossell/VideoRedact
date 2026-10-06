@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+# downloaded ML models (large) - fetched on first run or by scripts/fetch_models.py
+models/*.onnx
+models/*.bin
+models/whisper/
+# user media / outputs
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.wav
+*.mp3
+*.m4a
+!tests/data/*.wav
+!tests/data/*.mp4
+*.vrproj
+installer/Output/
+.claude/settings.local.json

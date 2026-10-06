@@ -4,17 +4,16 @@ Ordered roughly by value to an agency user. Tick items off and move them to
 NOTES.md "Current state" when done.
 
 ## Next up
-- [ ] QA on real body-cam / interview-room / dash-cam footage (1080p, 30-60 min).
-      Measure detect + export times on an 8-core box; tune `detect_stride`,
-      YOLOX-tiny default for long clips, progress ETA.
-- [ ] Build the Windows installer once (`installer\build.ps1`), fix PyInstaller
-      hidden-import gaps (onnxruntime, ctranslate2, PySide6 multimedia plugins),
-      bundle LGPL FFmpeg and the detection models + whisper `small`.
+- [x] First QA on real body-cam footage (720p30, 14 + 47 min Axon clips) -> v0.1.3 speed/VAD/model fixes.
+- [ ] Measure export time on a full 47-min clip; add ETA to job rows; consider hardware decode.
+- [x] Windows installer + GitHub releases + auto-update; models bundled.
+- [ ] Replace the GPL ffmpeg test binary with an LGPL build in `bin\` before wide distribution.
 - [ ] Undo/redo for redaction edits (command stack over Project).
 - [ ] Review queue: list low-confidence detections and track losses, jump through them.
 - [ ] Transcript export (TXT/SRT with redacted words replaced by [REDACTED]).
-- [ ] Waveform lane in the timeline; drag redaction edges to adjust.
+- [ ] Waveform lane in the timeline; drag redaction edges to adjust (drag-to-create exists).
 - [ ] Custom word lists (names, addresses) applied to every new transcript; fuzzy matching.
+- [ ] Multi-object "redact every face" fast path: run auto-detect faces, then KCF between detections.
 
 ## Detection and tracking
 - [ ] License plates: evaluate EgoBlur LP -> ONNX as optional deep pass; or train a small Apache-licensed detector.

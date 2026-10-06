@@ -180,6 +180,13 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Gotchas
 
+- Inno Setup's `CloseApplications` (Restart Manager) hung indefinitely on this
+  laptop when upgrading 0.1.5 -> 0.1.6 with no VideoRedact process running;
+  `/NOCLOSEAPPLICATIONS` installs fine in ~40 s. The in-app updater now passes
+  it and relaunches the app via `cmd /c setup && start exe`. For manual silent
+  installs use PowerShell `Start-Process` (Git Bash mangles `/PID`, `/LOG=`
+  style flags into paths; `taskkill /PID` silently does nothing there).
+
 - Store Python virtualizes `%LOCALAPPDATA%`: anything the venv writes to
   `C:\Users\<you>\AppData\Local\VideoRedact` really lands in
   `...\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_*\LocalCache\Local\VideoRedact`.

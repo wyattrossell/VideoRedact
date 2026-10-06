@@ -21,3 +21,10 @@ def test_asset_pattern():
     assert updater.ASSET_RE.match("videoredact-10.2.33-setup.EXE")
     assert not updater.ASSET_RE.match("VideoRedact-0.1.1-Portable.zip")
     assert not updater.ASSET_RE.match("Other-0.1.1-Setup.exe")
+
+
+def test_installer_args_scope():
+    a = updater.installer_args(r"C:\Temp\VideoRedact-1.0.0-Setup.exe", r"C:\Users\x\AppData\Local\Programs\VideoRedact\VideoRedact.exe")
+    assert "/CURRENTUSER" in a and "/NOCLOSEAPPLICATIONS" in a and "/SILENT" in a
+    b = updater.installer_args(r"C:\Temp\s.exe", r"C:\Program Files\VideoRedact\VideoRedact.exe")
+    assert "/ALLUSERS" in b and "/CURRENTUSER" not in b

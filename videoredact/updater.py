@@ -109,9 +109,31 @@ def download(info: UpdateInfo, progress: Optional[Callable[[float, str], None]] 
     return dest
 
 
+def installer_args(setup_path: str, exe_path: str) -> list[str]:
+    """Inno Setup arguments for an in-app upgrade.
+
+    /NOCLOSEAPPLICATIONS: the Restart Manager check hung for 20+ minutes on a
+    test machine even with no VideoRedact process alive, so we skip it; the
+    app quits itself before the installer starts. /ALLUSERS vs /CURRENTUSER
+    follows where the running copy is installed so a per-machine install does
+    not silently gain a second per-user copy."""
+    exe_lower = exe_path.lower()
+    per_machine = any(k in exe_lower for k in ("\program files", "\programfiles"))
+    scope = "/ALLUSERS" if per_machine else "/CURRENTUSER"
+    return [setup_path, "/SILENT", "/SUPPRESSMSGBOXES", "/NOCLOSEAPPLICATIONS", "/NORESTART", scope]
+
+
 def launch_installer(path: Path, restart: bool = True) -> None:
-    """Start the Inno Setup installer. The caller should quit the app right after."""
-    args = [str(path), "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART"]
-    if restart:
-        args.append("/RESTARTAPPLICATIONS")
-    subprocess.Popen(args, creationflags=_CREATE_NO_WINDOW, close_fds=True)
+    """Start the installer detached; relaunch the app when it finishes.
+    The caller should quit the app right after calling this."""
+    exe = sys.executable if getattr(sys, "frozen", False) else ""
+    args = installer_args(str(path), exe)
+    if sys.platform == "win32":
+        quoted = " ".join(f'"{a}"' if " " in a else a for a in args)
+        cmd = f'{quoted}'
+        if restart and exe:
+            cmd += f' && start "" "{exe}"'
+        flags = _CREATE_NO_WINDOW | getattr(subprocess, "DETACHED_PROCESS", 0)
+        subprocess.Popen(["cmd", "/c", cmd], creationflags=flags, close_fds=True)
+    else:
+        subprocess.Popen(args, close_fds=True)

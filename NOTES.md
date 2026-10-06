@@ -230,7 +230,7 @@ samples/ (720p30 Axon clips), i7-14700T:
   full 47-min export (509 s, ~166 fps). v0.1.6 adds **clip-range export**
   (Export dialog "Export only a time range"; verification maps back to source
   time; report notes the range) - a 60 s clip exports in 12 s - and the
-  self-test exports only 20 s. Installed copy on this laptop after this: 0.1.6.
+  self-test exports only 20 s. Installed copy on this laptop: 0.1.7 (0.1.7 = updater skips Restart Manager).
 
 - 2026-10-06 (evening): v0.1.4 built, published, installed per-user, self-test
   OK. Installed copy on this laptop: 0.1.4. Fixes the str-enum crash behind

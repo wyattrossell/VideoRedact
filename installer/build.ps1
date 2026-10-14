@@ -70,18 +70,22 @@ if (-not $NoModels) {
 }
 
 # ---- 2. PyInstaller -------------------------------------------------------
-if (Test-Path "$repo\dist\VideoRedact") { Remove-Item -Recurse -Force "$repo\dist\VideoRedact" }
-& $py -m PyInstaller --noconfirm --clean --distpath "$repo\dist" --workpath "$repo\build\pyi" "$repo\installer\videoredact.spec"
-if (-not (Test-Path "$repo\dist\VideoRedact\VideoRedact.exe")) { throw "PyInstaller build failed" }
-$size = [math]::Round((Get-ChildItem -Recurse "$repo\dist\VideoRedact" | Measure-Object Length -Sum).Sum / 1MB)
-Write-Host "==> Folder build: dist\VideoRedact ($size MB)"
+# Stage the bundle and work dir on LOCAL disk: thousands of small files on a UNC share are slow and
+# PyInstaller's directory creation failed there ("cannot find the path specified" during COLLECT).
+$dist = "$env:LOCALAPPDATA\Temp\videoredact-dist"
+$work = "$env:LOCALAPPDATA\Temp\videoredact-pyi"
+if (Test-Path "$dist\VideoRedact") { Remove-Item -Recurse -Force "$dist\VideoRedact" }
+& $py -m PyInstaller --noconfirm --clean --distpath $dist --workpath $work "$repo\installer\videoredact.spec"
+if (-not (Test-Path "$dist\VideoRedact\VideoRedact.exe")) { throw "PyInstaller build failed" }
+$size = [math]::Round((Get-ChildItem -Recurse "$dist\VideoRedact" | Measure-Object Length -Sum).Sum / 1MB)
+Write-Host "==> Folder build: $dist\VideoRedact ($size MB)"
 
 # ---- 3. Inno Setup --------------------------------------------------------
 $iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") |
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { throw "Inno Setup not found. Install with: winget install JRSoftware.InnoSetup" }
 New-Item -ItemType Directory -Force "$repo\Published" | Out-Null
-& $iscc /Q "/DAppVersion=$version" "$repo\installer\videoredact.iss"
+& $iscc /Q "/DAppVersion=$version" "/DDistDir=$dist\VideoRedact" "$repo\installer\videoredact.iss"
 $setup = "$repo\Published\VideoRedact-$version-Setup.exe"
 if (-not (Test-Path $setup)) { throw "Installer was not produced" }
 

@@ -225,6 +225,15 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-14 (late): v0.1.8 built (bundle now staged on local disk: PyInstaller's
+  COLLECT failed creating dirs on the UNC share; installer/build.ps1 passes
+  /DDistDir to Inno), published, installed per-user, self-test OK: frozen
+  parallel auto-detect with the Phase 2 pipeline = 159 face tracks / 1800
+  frames in 40 s (was 79 tracks / 9 s with the v0.1.7 pipeline - the new
+  default redacts far more but costs ~4x). Installed copy on this laptop: 0.1.8.
+  Gotcha: `pip install trackers` drags in opencv-python which shadows
+  opencv-contrib (KCF/CSRT vanish) - setup_dev.ps1 reinstalls contrib last.
+
 - 2026-10-14 (Phase 2): pluggable detectors (vision/detectors/), face
   evaluation on our frames (YuNet@1280 + multi-scale x1.5 wins: 96 % of
   consensus faces, SCRFD-10G 69 %, CenterFace 29 %; EgoBlur needs a manual

@@ -2,6 +2,9 @@
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
+#ifndef DistDir
+  #define DistDir "..\dist\VideoRedact"
+#endif
 #define AppName "VideoRedact"
 #define AppPublisher "VideoRedact project"
 #define AppURL "https://github.com/wyattrossell/VideoRedact"
@@ -46,7 +49,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "assocproj"; Description: "Associate .vrproj project files with VideoRedact"; GroupDescription: "File associations:"
 
 [Files]
-Source: "..\dist\VideoRedact\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\VideoRedact.exe"

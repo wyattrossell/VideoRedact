@@ -225,6 +225,14 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-14: Phase 0 audit. docs/ARCHITECTURE_CURRENT.md documents the
+  pipeline and 24 weaknesses with file:line refs. New vision/accel.py detects
+  hardware (dev laptop: RTX 3050 Ti + UHD 770, only CPU runtimes installed ->
+  tier=cpu) and feeds a provider chain (TensorRT/CUDA -> OpenVINO -> DirectML
+  -> CPU) into detector._ort_session with CPU fallback; `--selftest` prints
+  the tier and why a higher one was not used. Accelerated wheels are not
+  bundled yet (Phase 1).
+
 - 2026-10-06 (night): v0.1.5 published and installed; frozen self-test ran
   parallel auto-detect (2 workers, 79 face tracks / 1800 frames in 13 s) and a
   full 47-min export (509 s, ~166 fps). v0.1.6 adds **clip-range export**

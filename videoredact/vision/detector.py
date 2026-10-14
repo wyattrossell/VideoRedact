@@ -81,11 +81,20 @@ class FaceDetector:
 
 
 def _ort_session(model_bytes_or_path, threads: int = 0):
+    """ONNX Runtime session on the best available tier (see vision/accel.py),
+    falling back to CPU if the accelerated provider fails to initialise."""
     import onnxruntime as ort
+    from .accel import preferred_providers
     so = ort.SessionOptions()
     so.intra_op_num_threads = threads or max(1, min(4, (os.cpu_count() or 4) // 2))
     so.add_session_config_entry("session.intra_op.allow_spinning", "0")
     so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    providers = preferred_providers()
+    if len(providers) > 1:
+        try:
+            return ort.InferenceSession(model_bytes_or_path, so, providers=providers)
+        except Exception:  # noqa: BLE001  accelerated provider broken -> CPU
+            pass
     return ort.InferenceSession(model_bytes_or_path, so, providers=["CPUExecutionProvider"])
 
 
@@ -153,15 +162,10 @@ class ObjectDetector:
 
     def __init__(self, model: str = "yolox_s", conf_thr: float = 0.35, nms_thr: float = 0.45,
                  labels: Optional[set[str]] = None, threads: int = 0):
-        import onnxruntime as ort
         path = model_registry.ensure_model(model)
-        so = ort.SessionOptions()
-        # Leave cores for OpenCV/decoding and stop ORT threads from spin-waiting after a run:
-        # with spinning on, a resident session slowed KCF 2.5x and YOLOX itself 5x (measured).
-        so.intra_op_num_threads = threads or max(1, min(4, (os.cpu_count() or 4) // 2))
-        so.add_session_config_entry("session.intra_op.allow_spinning", "0")
-        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        self.sess = ort.InferenceSession(str(path), so, providers=["CPUExecutionProvider"])
+        # Thread budget + no spin-waiting: with spinning on, a resident session slowed
+        # KCF 2.5x and YOLOX itself 5x (measured). Provider tier comes from vision/accel.py.
+        self.sess = _ort_session(str(path), threads)
         inp = self.sess.get_inputs()[0]
         self.input_name = inp.name
         shp = inp.shape

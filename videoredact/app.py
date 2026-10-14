@@ -71,6 +71,14 @@ def selftest(media: str | None = None) -> int:
     from videoredact import __version__
     from videoredact.paths import models_dir, user_data_dir, resource_root
     lines.append(f"VideoRedact {__version__}  frozen={getattr(sys, 'frozen', False)}")
+    try:
+        from videoredact.vision.accel import detect_hardware
+        hw = detect_hardware()
+        lines.append(f"hardware:  {hw.summary()}")
+        for n in hw.notes:
+            lines.append(f"           note: {n}")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"hardware:  detection failed: {e}")
     lines.append(f"resources: {resource_root()}")
     lines.append(f"models:    {models_dir()}")
     lines.append(f"settings:  {user_data_dir()}")

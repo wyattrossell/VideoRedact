@@ -50,6 +50,7 @@ class VideoStyle(str, Enum):
 class Shape(str, Enum):
     RECT = "rect"
     ELLIPSE = "ellipse"
+    ROUNDED = "rounded"   # rectangle with rounded corners (covers hair/ears without the ellipse's corner gaps)
 
 
 # --------------------------------------------------------------------------
@@ -261,6 +262,68 @@ class VideoTrack:
 
     def total_frames(self) -> int:
         return sum(s.end_frame - s.start_frame + 1 for s in self.spans)
+
+    def review_flags(self, fps: float = 30.0) -> list[str]:
+        """Reasons a reviewer should look at this track: short, low-confidence, single
+        detection, head-fallback, or merged/linked automatically."""
+        flags = []
+        if self.source.startswith("auto"):
+            if self.total_frames() < fps * 1.0:
+                flags.append("short")
+            if "single detection" in self.note:
+                flags.append("single")
+            import re
+            m = re.search(r"avg conf ([0-9.]+)", self.note)
+            if m and float(m.group(1)) < 0.6:
+                flags.append("low-conf")
+            if self.label == "head" or "head-fallback" in self.note:
+                flags.append("head-fallback")
+            if "linked" in self.note or "merged" in self.note:
+                flags.append("linked")
+        if self.note.startswith("tracking cancelled"):
+            flags.append("incomplete")
+        return flags
+
+    def trim_start(self, frame: int) -> None:
+        """Remove everything before `frame` (keeps a keyframe at the cut)."""
+        bb = self.bbox_at(frame)
+        new = []
+        for s in self.spans:
+            if s.end_frame < frame:
+                continue
+            if s.start_frame < frame:
+                s.keyframes = {k: v for k, v in s.keyframes.items() if k >= frame}
+                if bb is not None:
+                    s.keyframes[frame] = bb
+                s.start_frame = frame
+            new.append(s)
+        self.spans = new
+
+    def trim_end(self, frame: int) -> None:
+        """Remove everything after `frame`."""
+        bb = self.bbox_at(frame)
+        new = []
+        for s in self.spans:
+            if s.start_frame > frame:
+                continue
+            if s.end_frame > frame:
+                s.keyframes = {k: v for k, v in s.keyframes.items() if k <= frame}
+                if bb is not None:
+                    s.keyframes[frame] = bb
+                s.end_frame = frame
+            new.append(s)
+        self.spans = new
+
+    def extend_to(self, frame: int) -> None:
+        """Extend the nearest span so the track covers `frame` (box held from the edge)."""
+        if not self.spans:
+            return
+        if self.bbox_at(frame) is not None:
+            return
+        nearest = min(self.spans, key=lambda s: min(abs(s.start_frame - frame), abs(s.end_frame - frame)))
+        nearest.start_frame = min(nearest.start_frame, frame)
+        nearest.end_frame = max(nearest.end_frame, frame)
+        self.merge_spans()
 
     def add_keyframe(self, frame: int, bbox: BBox) -> None:
         """Add/replace a keyframe. If no span contains the frame, a new

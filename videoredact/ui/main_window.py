@@ -162,7 +162,15 @@ class MainWindow(QMainWindow):
         self.a_track = act("&Track selected box", self.track_selected)
         self.a_clear_auto = act("Remove all a&utomatic detections", self.clear_auto)
         self.a_delete = act("&Delete selected redaction", self.delete_selected, "Delete")
+        self.a_trim_start = act("Trim track start to playhead", lambda: self.trim_selected("start"), "[")
+        self.a_trim_end = act("Trim track end to playhead", lambda: self.trim_selected("end"), "]")
+        self.a_extend = act("Extend track to playhead", self.extend_selected, "=")
+        self.a_next_flag = act("Next flagged track", lambda: self.panel.next_flagged(1), "F")
+        self.a_prev_flag = act("Previous flagged track", lambda: self.panel.next_flagged(-1), "Shift+F")
         for a in (self.a_detect, self.a_track, self.a_clear_auto, self.a_delete):
+            m.addAction(a)
+        m.addSeparator()
+        for a in (self.a_trim_start, self.a_trim_end, self.a_extend, self.a_next_flag, self.a_prev_flag):
             m.addAction(a)
 
         m = mb.addMenu("&Tools")
@@ -725,6 +733,32 @@ class MainWindow(QMainWindow):
         self.project.log("keyframe_edited", f"{t.label} frame {f}")
         self._project_changed()
 
+    def _selected_track(self) -> Optional[VideoTrack]:
+        kind, rid = self.panel.current()
+        tid = rid if kind == "video" else self.video.selected_track_id
+        return self.project.get_track(tid) if (self.project and tid) else None
+
+    def trim_selected(self, which: str) -> None:
+        t = self._selected_track()
+        if not t:
+            return
+        f = self.current_frame()
+        (t.trim_start if which == "start" else t.trim_end)(f)
+        if not t.spans:
+            self.project.remove_video_track(t.id)
+        else:
+            self.project.log("track_trimmed", f"{t.label} {which} -> frame {f}")
+        self._project_changed()
+
+    def extend_selected(self) -> None:
+        t = self._selected_track()
+        if not t:
+            return
+        f = self.current_frame()
+        t.extend_to(f)
+        self.project.log("track_extended", f"{t.label} -> frame {f}")
+        self._project_changed()
+
     def track_selected(self) -> None:
         kind, rid = self.panel.current()
         tid = rid if kind == "video" else self.video.selected_track_id
@@ -772,6 +806,17 @@ class MainWindow(QMainWindow):
 
         opts.face_model = settings.get("face_detector", "yunet")
         opts.carry = dlg.carry.isChecked()
+        opts.tiles = dlg.tiles.isChecked()
+        opts.multiscale = dlg.ms.isChecked()
+        settings["detect_multiscale"] = opts.multiscale
+        opts.head_fallback = dlg.head.isChecked()
+        opts.face_pad = float(settings.get("face_pad", 0.25))
+        opts.assoc = settings.get("assoc", "botsort")
+        opts.lead_in = int(settings.get("lead_frames", 15))
+        opts.lead_out = int(settings.get("lead_frames", 15))
+        settings["detect_tiles"] = opts.tiles
+        settings["detect_head"] = opts.head_fallback
+        settings.save()
         proj = self.project
 
         def job(prog, cancel, partial):

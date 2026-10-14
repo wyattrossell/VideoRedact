@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView,
                                QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QCheckBox)
 
@@ -35,8 +36,8 @@ class RedactionPanel(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(5)
-        self.tree.setHeaderLabels(["On", "What", "Start", "End", "Style"])
+        self.tree.setColumnCount(6)
+        self.tree.setHeaderLabels(["On", "What", "Start", "End", "Style", "Review"])
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.setRootIsDecorated(True)
         self.tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
@@ -51,8 +52,12 @@ class RedactionPanel(QWidget):
         self.btn_track = QPushButton("Track object")
         self.btn_track.setToolTip("Follow the selected box through the video (forward and backward) with automatic re-acquisition")
         self.btn_track.clicked.connect(self._track)
+        self.btn_flag = QPushButton("Next flagged")
+        self.btn_flag.setToolTip("Select the next track that needs review (F / Shift+F in the video)")
+        self.btn_flag.clicked.connect(lambda: self.next_flagged(1))
         btns.addWidget(self.btn_del)
         btns.addWidget(self.btn_track)
+        btns.addWidget(self.btn_flag)
         btns.addStretch(1)
         lay.addLayout(btns)
         self.summary = QLabel("")
@@ -91,8 +96,12 @@ class RedactionPanel(QWidget):
                     sel_item = it
             fps = p.media.fps or 30.0
             for t in p.video_tracks:
+                flags = t.review_flags(fps)
                 it = QTreeWidgetItem(["", f"{t.label}  ({t.source}, {len(t.spans)} span{'s' if len(t.spans) != 1 else ''})",
-                                      _fmt(t.first_frame() / fps), _fmt((t.last_frame() + 1) / fps), ""])
+                                      _fmt(t.first_frame() / fps), _fmt((t.last_frame() + 1) / fps), "", ", ".join(flags)])
+                if flags:
+                    it.setForeground(5, QColor(230, 150, 40))
+                    it.setToolTip(5, "Needs a look: " + ", ".join(flags))
                 it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
                 it.setCheckState(0, Qt.Checked if t.enabled else Qt.Unchecked)
                 it.setData(0, Qt.UserRole, ("video", t.id))
@@ -196,6 +205,22 @@ class RedactionPanel(QWidget):
         kind, rid = self.current()
         if kind:
             self.deleteRequested.emit(kind, rid)
+
+    def next_flagged(self, direction: int = 1) -> None:
+        if not self.project or self.video_root is None:
+            return
+        n = self.video_root.childCount()
+        if n == 0:
+            return
+        cur = self.tree.currentItem()
+        start = self.video_root.indexOfChild(cur) if cur is not None and cur.parent() is self.video_root else -1
+        for k in range(1, n + 1):
+            i = (start + direction * k) % n
+            it = self.video_root.child(i)
+            if it.text(5):
+                self.tree.setCurrentItem(it)
+                self._on_double(it, 1)
+                return
 
     def _track(self) -> None:
         kind, rid = self.current()

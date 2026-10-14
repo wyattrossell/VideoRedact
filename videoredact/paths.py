@@ -107,7 +107,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "export_crf": 18,
     "export_preset": "veryfast",
     "cpu_threads": 0,               # 0 = auto
-    "tracker": "csrt",
+    "tracker": "vit",              # vit | kcf | csrt (kcf/csrt need opencv-contrib)
     "media_backend": "",            # unused since the custom player; kept for settings compatibility
     "detector_model": "yolox_tiny",
     "check_updates": True,          # ask GitHub Releases for a newer installer at startup
@@ -116,6 +116,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "track_step": 2,                # tracker processes every N-th frame
     "track_backward": True,
     "face_detector": "yunet",       # yunet | centerface
+    "face_pad": 0.25,               # dilation of auto-detected face/head boxes
+    "lead_frames": 15,              # back-fill / persistence around detections
+    "assoc": "botsort",             # botsort | bytetrack | ocsort | iou
+    "detect_head": True,
+    "detect_tiles": False,
+    "detect_multiscale": True,
 }
 
 

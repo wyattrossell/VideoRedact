@@ -89,6 +89,7 @@ def _ort_session(model_bytes_or_path, threads: int = 0):
     so.intra_op_num_threads = threads or max(1, min(4, (os.cpu_count() or 4) // 2))
     so.add_session_config_entry("session.intra_op.allow_spinning", "0")
     so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    so.log_severity_level = 3   # errors only (CenterFace's graph triggers thousands of initializer warnings)
     providers = preferred_providers()
     if len(providers) > 1:
         try:
@@ -161,7 +162,10 @@ class ObjectDetector:
     """YOLOX ONNX inference (yolox_s @640 or yolox_tiny @416)."""
 
     def __init__(self, model: str = "yolox_s", conf_thr: float = 0.35, nms_thr: float = 0.45,
-                 labels: Optional[set[str]] = None, threads: int = 0):
+                 labels: Optional[set[str]] = None, threads: int = 0, class_names: Optional[list[str]] = None):
+        # class_names: label per output class id for fine-tuned models (train/README.md);
+        # None -> COCO mapping in COCO_TO_LABEL
+        self.class_names = class_names
         path = model_registry.ensure_model(model)
         # Thread budget + no spin-waiting: with spinning on, a resident session slowed
         # KCF 2.5x and YOLOX itself 5x (measured). Provider tier comes from vision/accel.py.
@@ -216,7 +220,7 @@ class ObjectDetector:
         boxes = np.concatenate([x0y0, x1y1], 1)
         dets: list[Detection] = []
         for c in np.unique(cls_id):
-            label = COCO_TO_LABEL.get(int(c))
+            label = self.class_names[int(c)] if self.class_names and int(c) < len(self.class_names) else COCO_TO_LABEL.get(int(c))
             if label is None or (self.labels is not None and label not in self.labels):
                 continue
             m = cls_id == c

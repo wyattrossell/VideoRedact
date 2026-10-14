@@ -9,6 +9,16 @@ docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
 - [x] Auto-detect: carry tracks through missed detections, keep single detections, link fragments, parallel workers, full-res detection.
 - [x] Post-export verification pass (re-detect faces in the output, list uncovered hits).
 
+## Done in Phase 2 (accuracy, 2026-10-14) - see docs/PHASE2_NOTES.md
+- [x] Pluggable detector interface (`vision/detectors/`): adapters, tiling, multi-scale, ensembles, head fallback.
+- [x] Face detector evaluation on our footage: YuNet@1280 + multi-scale x1.5 chosen (SCRFD/CenterFace/tiling rejected with numbers).
+- [x] Head fallback for persons without a detected face; 25 % face padding; ellipse / rounded masks.
+- [x] BoT-SORT association (camera-motion compensation) made additive; lead-in/persistence; 2 s fragment linking.
+- [x] Review flags (short/single/low-conf/head-fallback/linked), F / Shift+F, [ ] trim, = extend.
+- [x] Fine-tune scaffold `train/` (YOLOX, Apache) and benchmark scripts `bench/eval_faces.py`, `bench/eval_autodetect.py`.
+- [ ] Open-vocabulary detector: evaluated (Grounding DINO 9 s/frame on CPU) and parked; use fine-tuned classes instead.
+- [ ] SAM-based masks: parked pending GPU availability and licence review.
+
 ## Top 10 next, drawn from the commercial / legal / technical research
 1. **Review queue** for auto-detections: list every track with a thumbnail, jump-to, approve/delete, "mark all reviewed", keyboard F / Shift+F to step through (Axon/Motorola pattern). Biggest reviewer time saver. (M)
 2. **Exemption code + reason per redaction**, state pick-lists, exemption log in the PDF/CSV (FOIA 552(b), RCW 42.56.210). (S)

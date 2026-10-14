@@ -225,6 +225,20 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-14 (Phase 2): pluggable detectors (vision/detectors/), face
+  evaluation on our frames (YuNet@1280 + multi-scale x1.5 wins: 96 % of
+  consensus faces, SCRFD-10G 69 %, CenterFace 29 %; EgoBlur needs a manual
+  click-through download), head fallback (person box -> head region, merged
+  into the face lane), 25 % face padding + ellipse/rounded masks, BoT-SORT
+  association via Roboflow trackers (Apache) made purely additive (raw boxes
+  redacted; tracker only supplies identity), lead-in/persistence 15 frames,
+  review flags + F/Shift+F + [ ] = keys, train/ fine-tune scaffold, Grounding
+  DINO adapter (9 s/frame on CPU -> not viable). Measured on the 3-min
+  crash-scene slice: coverage stays 100 %, redacted frame-boxes 15k -> 69k
+  (turned heads, distant faces, persistence), 57 fps parallel (was 172),
+  tracks 282 -> 464 (224 singletons flagged "single"). Details:
+  docs/PHASE2_NOTES.md. SCRFD adapter had an x/y anchor swap at first - fixed.
+
 - 2026-10-14: Phase 1 benchmark harness in bench/ (make_clips, extract_frames,
   preannotate -> Label Studio local, ls_to_yolo, run_bench). Baseline on 11 x 45 s
   clips: auto-detect 60 fps single-process (86 % of time in detection, 72 ms per

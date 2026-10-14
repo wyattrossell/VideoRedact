@@ -33,8 +33,9 @@ import numpy as np
 import logging
 
 from videoredact.core.media import FrameReader
-from videoredact.core.model import BBox, Span, VideoTrack
-from .detector import CombinedDetector, Detection
+from videoredact.core.model import BBox, Shape, Span, VideoTrack
+from .detector import CombinedDetector
+from .detectors.base import Detection
 
 ProgressCB = Callable[[float, str], None]
 CancelCB = Callable[[], bool]
@@ -62,23 +63,50 @@ class AutoDetectOptions:
     iou_thr: float = 0.3
     max_missed: int = 8        # detection steps (stride frames each)
     min_hits: int = 1          # recall first: keep single detections too (if confident, see SINGLE_MIN_CONF)
-    link_gap_s: float = 1.0    # post-pass: join same-label fragments separated by <= this gap when boxes overlap
+    link_gap_s: float = 2.0    # post-pass: join same-label fragments separated by <= this gap when boxes overlap/are near (2 s: 568 -> 464 tracks on the crash-scene slice)
     start_frame: int = 0
     end_frame: Optional[int] = None
     threads: int = 0
     face_model: str = "yunet"
     carry: bool = True         # carry tracks with ViTTrack through missed detections
     workers: int = 0           # 0 = auto (parallel chunks); 1 = single process
+    assoc: str = "botsort"     # botsort (Kalman + camera-motion compensation) | bytetrack | ocsort | iou
+    lead_in: int = 15          # back-fill: frames added before the first detection of a track
+    lead_out: int = 15         # persistence: frames kept after the last detection / carry
+    tiles: bool = False        # SAHI-style tiled face detection (mostly false positives at 720p; useful at 4K)
+    multiscale: bool = True    # also run the face detector on a 1.5x upscaled frame: finds small/distant/profile faces (+2.4x face cost)
+    head_fallback: bool = True # emit a head box for persons without a detected face
+    face_pad: float = 0.25     # dilation of face/head boxes (fraction of box size)
+    face_shape: str = "ellipse"
+    detector_cfg: Optional[dict] = None   # override for detectors.build()
 
 
 # ----------------------------------------------------------------------------
 # single-chunk engine
 # ----------------------------------------------------------------------------
+def build_detector(opts: "AutoDetectOptions"):
+    """Detector pipeline for these options (see vision/detectors/__init__.py)."""
+    from .detectors import build
+    cfg = dict(opts.detector_cfg or {})
+    cfg.setdefault("face", opts.face_model if "face" in opts.labels else "")
+    cfg.setdefault("face_conf", opts.face_conf)
+    cfg.setdefault("tiles", opts.tiles)
+    cfg.setdefault("multiscale", [1.0, 1.5] if opts.multiscale else None)
+    cfg.setdefault("objects", [l for l in opts.labels if l != "face"])
+    cfg.setdefault("object_model", opts.obj_model)
+    cfg.setdefault("obj_conf", opts.obj_conf)
+    cfg.setdefault("head_fallback", opts.head_fallback and "face" in opts.labels)
+    cfg.setdefault("threads", opts.threads)
+    return build(cfg)
+
+
 class _Live:
     __slots__ = ("label", "span", "last_box", "last_frame", "hits", "missed", "score_sum", "carrier",
-                 "carry_frames")
+                 "carry_frames", "tid", "fallback_hits")
 
-    def __init__(self, label: str, frame: int, box: BBox, score: float):
+    def __init__(self, label: str, frame: int, box: BBox, score: float, tid: int = -1, fallback: bool = False):
+        self.tid = tid
+        self.fallback_hits = 1 if fallback else 0
         self.label = label
         self.span = Span(frame, frame, {frame: box})
         self.last_box = box
@@ -154,7 +182,11 @@ class _Carrier:
         return self.box
 
 
-def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det: CombinedDetector,
+def _run_detector(det, frame):
+    return det.detect_one(frame) if hasattr(det, "detect_one") else det.detect(frame)
+
+
+def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
                   start: int, end: int, progress: Optional[ProgressCB], cancel: Optional[CancelCB],
                   prog_base: float = 0.0, prog_span: float = 1.0) -> list[VideoTrack]:
     W, H = reader.width, reader.height
@@ -174,8 +206,20 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det: CombinedDet
     carry_max_frames = int(CARRY_MAX_S * fps)
 
     def close(L: _Live):
+        if L.hits == 1 and L.fallback_hits == 1:
+            return   # a lone head-fallback box (person seen once, no face) is too noisy to keep
         if L.hits >= max(2, opts.min_hits) or (opts.min_hits <= 1 and L.hits == 1 and L.score_sum >= SINGLE_MIN_CONF):
             finished.append(L)
+
+    mot = None
+    if opts.assoc != "iou":
+        try:
+            from .mot import MOT
+            mot = MOT(opts.assoc, fps=fps, stride=stride, lost_buffer_steps=opts.max_missed)
+        except Exception as e:  # noqa: BLE001  (trackers not installed -> IoU association)
+            log.warning("MOT %s unavailable (%s); using IoU association", opts.assoc, e)
+            mot = None
+    by_tid: dict[int, _Live] = {}
 
     reader.seek(start)
     idx = start
@@ -194,14 +238,52 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det: CombinedDet
         if is_det:
             # full-resolution frame: the face detector downsizes to <=1280 itself (small faces
             # need the pixels; a 960 px copy lost ~7 % of faces), YOLOX resizes to 416 anyway
-            dets = det.detect(frame)
-            pairs, un_live, un_det = _match(live, dets, opts.iou_thr)
+            dets = _run_detector(det, frame)
+            if mot is not None:
+                # BoT-SORT gives identities (Kalman prediction + camera-motion compensation);
+                # the *raw detection box* is what gets redacted (the tracker's smoothed box can lag),
+                # and any detection the tracker drops falls back to overlap matching, so the
+                # tracker can only add continuity, never remove coverage.
+                tracked = mot.update(dets, frame, idx)
+                seen = set()
+                used_det = set()
+                for td in tracked:
+                    j = max(range(len(dets)), key=lambda k: (td.bbox.iou(dets[k].bbox) if k not in used_det else -1), default=None)
+                    if j is None or td.bbox.iou(dets[j].bbox) < 0.3:
+                        continue                      # predicted-only output: no detection this step
+                    used_det.add(j)
+                    d = dets[j]
+                    seen.add(td.track_id)
+                    L = by_tid.get(td.track_id)
+                    if L is None or L not in live:
+                        L = _Live(d.label, idx, d.bbox, d.score, td.track_id, fallback=(d.source == "head-fallback"))
+                        by_tid[td.track_id] = L
+                        live.append(L)
+                        continue
+                    L.span.keyframes[idx] = d.bbox
+                    L.span.end_frame = idx
+                    L.last_box, L.last_frame = d.bbox, idx
+                    L.hits += 1
+                    L.fallback_hits += int(d.source == "head-fallback")
+                    L.missed = 0
+                    L.score_sum += d.score
+                    L.carrier = None
+                    L.carry_frames = 0
+                rest_live = [i for i, L in enumerate(live) if L.tid not in seen]
+                rest_dets = [j for j in range(len(dets)) if j not in used_det]
+                sub_pairs, sub_un_live, sub_un_det = _match([live[i] for i in rest_live], [dets[j] for j in rest_dets], opts.iou_thr)
+                pairs = [(rest_live[a], rest_dets[b]) for a, b in sub_pairs]
+                un_live = [rest_live[a] for a in sub_un_live]
+                un_det = [rest_dets[b] for b in sub_un_det]
+            else:
+                pairs, un_live, un_det = _match(live, dets, opts.iou_thr)
             for i, j in pairs:
                 L, d = live[i], dets[j]
                 L.span.keyframes[idx] = d.bbox
                 L.span.end_frame = idx
                 L.last_box, L.last_frame = d.bbox, idx
                 L.hits += 1
+                L.fallback_hits += int(getattr(d, "source", "") == "head-fallback")
                 L.missed = 0
                 L.score_sum += d.score
                 L.carrier = None
@@ -222,7 +304,7 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det: CombinedDet
                             L.carrier = None
             for j in un_det:
                 d = dets[j]
-                live.append(_Live(d.label, idx, d.bbox, d.score))
+                live.append(_Live(d.label, idx, d.bbox, d.score, fallback=(getattr(d, "source", "") == "head-fallback")))
             still = []
             for L in live:
                 if L.missed > opts.max_missed:
@@ -255,12 +337,19 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det: CombinedDet
     last_frame = end - 1
     for L in finished:
         s = L.span
-        s.start_frame = max(0, s.start_frame - stride)
-        s.end_frame = min(last_frame, s.end_frame + stride)
+        # back-fill before the first detection and persist after the last one
+        s.start_frame = max(0, s.start_frame - max(stride, opts.lead_in))
+        s.end_frame = min(last_frame, s.end_frame + max(stride, opts.lead_out))
         note = f"auto-detected, {L.hits} hits, avg conf {L.score_sum / L.hits:.2f}"
+        if L.fallback_hits:
+            note += f", head-fallback on {L.fallback_hits} of {L.hits}"
         if L.hits == 1:
             note += " (single detection - review)"
-        tracks.append(VideoTrack(label=L.label, spans=[s], source="auto", note=note))
+        t = VideoTrack(label=L.label, spans=[s], source="auto", note=note)
+        if L.label in ("face", "head"):
+            t.pad = opts.face_pad
+            t.shape = Shape.ELLIPSE if opts.face_shape == "ellipse" else Shape.RECT
+        tracks.append(t)
     return link_fragments(tracks, int(opts.link_gap_s * fps))
 
 
@@ -314,8 +403,7 @@ def _worker(path: str, opts_d: dict, start: int, end: int, q, cancel_ev, wid: in
         cv_threads = opts_d.pop("cv_threads", 2)
         opts = AutoDetectOptions(**opts_d)
         cv2.setNumThreads(max(2, cv_threads))
-        det = CombinedDetector(opts.labels, opts.face_conf, opts.obj_conf, opts.obj_model,
-                               threads=max(1, opts.threads), face_model=opts.face_model)
+        det = build_detector(opts)
         t0 = time.time()
         with FrameReader(path) as reader:
             tracks = _detect_chunk(reader, opts, det, start, end,
@@ -368,8 +456,7 @@ def run_auto_detect(reader: FrameReader, opts: AutoDetectOptions,
     n = end - start
     workers = opts.workers or max(1, min(4, (os.cpu_count() or 4) // 2))
     if detector is not None or workers <= 1 or n < 1500:
-        det = detector or CombinedDetector(opts.labels, opts.face_conf, opts.obj_conf, opts.obj_model,
-                                           opts.threads, face_model=opts.face_model)
+        det = detector or build_detector(opts)
         tracks = _detect_chunk(reader, opts, det, start, end, progress, cancel)
         tracks.sort(key=lambda t: (t.first_frame(), t.label))
         if progress:

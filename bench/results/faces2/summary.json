@@ -1,0 +1,47 @@
+{
+ "mode": "consensus(>=2 detectors)",
+ "frames": 495,
+ "labelled_frames": 0,
+ "detectors": {
+  "yunet1280": {
+   "recall": 0.93359375,
+   "precision_vs_consensus": 1.0,
+   "tp": 239,
+   "fp_or_unique": 0,
+   "fn": 17,
+   "ms_per_frame": 25.8
+  },
+  "yunet_tiles": {
+   "recall": 0.9453125,
+   "precision_vs_consensus": 0.9132075471698113,
+   "tp": 242,
+   "fp_or_unique": 23,
+   "fn": 14,
+   "ms_per_frame": 100.9
+  },
+  "yunet_ms": {
+   "recall": 0.96484375,
+   "precision_vs_consensus": 0.9536679536679536,
+   "tp": 247,
+   "fp_or_unique": 12,
+   "fn": 9,
+   "ms_per_frame": 65.4
+  },
+  "scrfd640": {
+   "recall": 0.69140625,
+   "precision_vs_consensus": 0.9943820224719101,
+   "tp": 177,
+   "fp_or_unique": 1,
+   "fn": 79,
+   "ms_per_frame": 104.7
+  },
+  "scrfd_tiles": {
+   "recall": 0.83203125,
+   "precision_vs_consensus": 0.891213389121339,
+   "tp": 213,
+   "fp_or_unique": 26,
+   "fn": 43,
+   "ms_per_frame": 591.0
+  }
+ }
+}

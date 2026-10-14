@@ -1,0 +1,63 @@
+{
+ "mode": "consensus(>=2 detectors)",
+ "frames": 495,
+ "labelled_frames": 0,
+ "detectors": {
+  "yunet960": {
+   "recall": 0.45454545454545453,
+   "precision_vs_consensus": 0.9259259259259259,
+   "tp": 200,
+   "fp_or_unique": 16,
+   "fn": 240,
+   "ms_per_frame": 17.6
+  },
+  "yunet1280": {
+   "recall": 0.5431818181818182,
+   "precision_vs_consensus": 1.0,
+   "tp": 239,
+   "fp_or_unique": 0,
+   "fn": 201,
+   "ms_per_frame": 31.6
+  },
+  "yunet_tiles": {
+   "recall": 0.5568181818181818,
+   "precision_vs_consensus": 0.9245283018867925,
+   "tp": 245,
+   "fp_or_unique": 20,
+   "fn": 195,
+   "ms_per_frame": 113.5
+  },
+  "yunet_ms": {
+   "recall": 0.5568181818181818,
+   "precision_vs_consensus": 0.9459459459459459,
+   "tp": 245,
+   "fp_or_unique": 14,
+   "fn": 195,
+   "ms_per_frame": 75.0
+  },
+  "centerface": {
+   "recall": 0.2863636363636364,
+   "precision_vs_consensus": 0.9767441860465116,
+   "tp": 126,
+   "fp_or_unique": 3,
+   "fn": 314,
+   "ms_per_frame": 191.8
+  },
+  "scrfd640": {
+   "recall": 0.44545454545454544,
+   "precision_vs_consensus": 0.5648414985590778,
+   "tp": 196,
+   "fp_or_unique": 151,
+   "fn": 244,
+   "ms_per_frame": 118.7
+  },
+  "scrfd_tiles": {
+   "recall": 0.5545454545454546,
+   "precision_vs_consensus": 0.19334389857369255,
+   "tp": 244,
+   "fp_or_unique": 1018,
+   "fn": 196,
+   "ms_per_frame": 825.4
+  }
+ }
+}

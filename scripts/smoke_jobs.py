@@ -17,6 +17,7 @@ from videoredact.core.model import BBox, VideoTrack
 QMessageBox.information = staticmethod(lambda *a, **k: None)
 QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.Yes)
 QMessageBox.warning = staticmethod(lambda *a, **k: None)
+QMessageBox.exec = lambda self: (print("MESSAGEBOX:", self.windowTitle(), "|", self.text(), "|", self.detailedText()[:800]), 0)[1]
 
 app = QApplication(sys.argv)
 w = MainWindow()

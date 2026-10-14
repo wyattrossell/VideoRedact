@@ -92,6 +92,16 @@ def make_tracker(kind: str = "vit"):
         return cv2.TrackerVit_create(p)
     if kind == "csrt" and hasattr(cv2, "TrackerCSRT_create"):
         return cv2.TrackerCSRT_create()
+    if kind == "kcf" and hasattr(cv2, "TrackerKCF_create"):
+        p = cv2.TrackerKCF_Params()
+        p.detect_thresh = 0.4
+        return cv2.TrackerKCF_create(p)
+    # requested kind unavailable (KCF/CSRT live in opencv-contrib; a plain opencv-python
+    # install shadows them) -> best available, ViT first
+    if vit_available():
+        p = cv2.TrackerVit_Params()
+        p.net = _VIT_PATH
+        return cv2.TrackerVit_create(p)
     if hasattr(cv2, "TrackerKCF_create"):
         p = cv2.TrackerKCF_Params()
         p.detect_thresh = 0.4

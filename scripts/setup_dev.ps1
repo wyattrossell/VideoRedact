@@ -16,6 +16,8 @@ if (-not (Test-Path "$VenvPath\Scripts\python.exe")) {
 $py = "$VenvPath\Scripts\python.exe"
 & $py -m pip install --upgrade pip
 & $py -m pip install -r "$repo\requirements.txt"
+# `trackers` pulls in plain opencv-python, which shadows the contrib build (KCF/CSRT disappear): reinstall contrib last.
+& $py -m pip install --force-reinstall --no-deps "opencv-contrib-python>=4.10"
 Write-Host ""
 Write-Host "Done. Run the app with:  $py -m videoredact   (from $repo)"
 Write-Host "Optional: pre-download models:  $py scripts\fetch_models.py --whisper small"

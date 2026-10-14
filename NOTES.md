@@ -225,6 +225,15 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-14: Phase 1 benchmark harness in bench/ (make_clips, extract_frames,
+  preannotate -> Label Studio local, ls_to_yolo, run_bench). Baseline on 11 x 45 s
+  clips: auto-detect 60 fps single-process (86 % of time in detection, 72 ms per
+  detect call with face+screen+document+phone), export 202 fps (66 % encode+pipe,
+  29 % decode, 5 % redact). Clips are < 1500 frames so the parallel path did not
+  engage (parallel column == single). Accuracy pending Wyatt's labels.
+  Label Studio 1.23 installed at C:\devenv-labelstudio (bench\label.ps1).
+  docs/UPGRADE_PLAN.md written; waiting for approval before changing the pipeline.
+
 - 2026-10-14: Phase 0 audit. docs/ARCHITECTURE_CURRENT.md documents the
   pipeline and 24 weaknesses with file:line refs. New vision/accel.py detects
   hardware (dev laptop: RTX 3050 Ti + UHD 770, only CPU runtimes installed ->

@@ -29,3 +29,9 @@ bin/
 dist/
 build/
 *.spec.bak
+# benchmark footage and labels stay local (CJIS)
+bench/clips/
+bench/frames/
+bench/labelstudio/
+bench/labels/
+!bench/labels/classes.txt

@@ -195,3 +195,18 @@ def test_openvino_telemetry_is_unimportable():
 def test_installer_excludes_telemetry_package():
     spec = (Path(__file__).parents[1] / "installer" / "videoredact.spec").read_text(encoding="utf-8")
     assert '"openvino_telemetry"' in spec
+
+
+def test_manifest_accepts_numpy_boxes(tmp_path):
+    """Auto-detected tracks carry float32 coordinates; the first benchmark after Phase 4 crashed on them."""
+    from videoredact.core.audit import write_manifest
+    proj = Project(media=probe(str(DATA / "sample.mp4")))
+    f32 = np.float32
+    proj.add_video_track(VideoTrack(label="face", source="auto", pad=f32(0.25),
+                                    spans=[Span(0, 5, {0: BBox(f32(0.1), f32(0.2), f32(0.3), f32(0.4))})]))
+    res = {"output": "x.mp4", "output_sha256": "0" * 64, "elapsed_s": f32(1.5)}
+    p = tmp_path / "m.json"
+    h = write_manifest(proj, res, {"output": "x.mp4", "crf": f32(23)}, p)
+    assert verify_manifest(p) == (True, h)
+    m = json.loads(p.read_text(encoding="utf-8"))
+    assert m["redactions"]["video"][0]["spans"][0]["keyframes"]["0"][0] == pytest.approx(0.1)

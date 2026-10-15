@@ -30,6 +30,26 @@ from .model import Project, as_enum, AudioStyle, VideoStyle, Shape
 _MODEL_HASH_CACHE: dict[str, str] = {}
 
 
+def _json_default(o: Any):
+    """Auto-detected boxes carry numpy float32 coordinates; JSON needs plain Python types."""
+    try:
+        import numpy as np
+        if isinstance(o, np.generic):
+            return o.item()
+        if isinstance(o, np.ndarray):
+            return o.tolist()
+    except ImportError:
+        pass
+    if isinstance(o, Path):
+        return str(o)
+    return str(o)
+
+
+def canonical_bytes(manifest: dict[str, Any]) -> bytes:
+    """The bytes whose SHA-256 is `manifest_sha256`: sorted keys, no whitespace, UTF-8."""
+    return json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=_json_default).encode("utf-8")
+
+
 def model_inventory() -> list[dict[str, Any]]:
     """Every model file the app can use: name, file, size, SHA-256, licence, purpose."""
     from videoredact.vision import models as reg
@@ -161,8 +181,10 @@ def build_manifest(project: Project, result: dict[str, Any], export_opts: Any) -
                                                      for u in vr.uncovered]},
         "audit_log": [asdict(e) for e in project.audit_log],
     }
-    body = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    manifest["manifest_sha256"] = hashlib.sha256(body).hexdigest()
+    # Round-trip through JSON first so the hash is computed over exactly the value types a
+    # reader will load back (numpy float32 -> float, tuples -> lists), then hash canonically.
+    manifest = json.loads(json.dumps(manifest, default=_json_default))
+    manifest["manifest_sha256"] = hashlib.sha256(canonical_bytes(manifest)).hexdigest()
     return manifest
 
 
@@ -176,5 +198,4 @@ def verify_manifest(path: str | Path) -> tuple[bool, str]:
     """Recompute the embedded manifest hash. Returns (ok, stored_hash)."""
     m = json.loads(Path(path).read_text(encoding="utf-8"))
     stored = m.pop("manifest_sha256", "")
-    body = json.dumps(m, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    return hashlib.sha256(body).hexdigest() == stored, stored
+    return hashlib.sha256(canonical_bytes(m)).hexdigest() == stored, stored

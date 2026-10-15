@@ -240,7 +240,12 @@ samples/ (720p30 Axon clips), i7-14700T:
   `--selftest --offline-check` blocks sockets: first run caught openvino_telemetry
   -> www.google-analytics.com (fixed by excluding/blocking the package). Settings
   offline=True, check_updates=False. docs/CJIS_COMPLIANCE.md + PHASE4_NOTES.md.
-  tests/test_audit.py (12 tests). Released as v0.1.10.
+  tests/test_audit.py (14 tests). Released as v0.1.10; installed on this laptop,
+  frozen `--selftest --offline-check` = 0 connection attempts, manifest verifies.
+  Gotcha: do not run `installeruild.ps1` with `2>&1` from Windows PowerShell 5.1;
+  PyInstaller's stderr becomes a NativeCommandError and the script aborts after
+  bumping the version (revert pyproject.toml + __init__.py, then rerun). Run it
+  plainly or via `powershell.exe -File installeruild.ps1 -Publish > log 2>&1`.
 
 - 2026-10-15 (late): v0.1.9 built (700 MB incl. openvino), published, installed
   per-user, self-test OK on the frozen build: tier=intel via openvino:GPU.0,

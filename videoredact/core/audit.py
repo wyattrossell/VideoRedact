@@ -60,7 +60,7 @@ def model_inventory() -> list[dict[str, Any]]:
                     h = _MODEL_HASH_CACHE.get(key) or sha256_file(mb)
                     _MODEL_HASH_CACHE[key] = h
                     out.append({"name": f"faster-whisper-{size}", "file": str(mb), "bytes": mb.stat().st_size, "sha256": h,
-                                "license": "MIT (Systran faster-whisper conversion of OpenAI Whisper)", "purpose": "speech-to-text"})
+                                "license": "MIT (Systran/OpenAI Whisper)", "purpose": "speech-to-text"})
                     break
     except Exception:
         pass

@@ -159,7 +159,7 @@ def write_pdf(project: Project, path: str | Path, result: dict | None = None) ->
                                f"ONNX Runtime {eng.get('onnxruntime', '-')}, OpenVINO {eng.get('openvino', '-')}, OpenCV {eng.get('opencv', '-')}", small))
         rows = [["Model", "Purpose", "License", "SHA-256"]]
         for m in inv:
-            rows.append([m["name"], Paragraph(m["purpose"], small), m["license"], Paragraph(m["sha256"], mono)])
+            rows.append([Paragraph(m["name"], small), Paragraph(m["purpose"], small), Paragraph(m["license"], small), Paragraph(m["sha256"], mono)])
         mt = Table(rows, repeatRows=1, colWidths=[1.3 * inch, 2.6 * inch, 1.4 * inch, 4.4 * inch])
         mt.setStyle(TableStyle([("FONT", (0, 0), (-1, -1), "Helvetica", 7.5), ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8),
                                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dde3ea")), ("VALIGN", (0, 0), (-1, -1), "TOP"),

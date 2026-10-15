@@ -140,7 +140,7 @@ def selftest(media: str | None = None) -> int:
             from videoredact.core.export import ExportOptions, export_project
             from videoredact.core.media import probe
             from videoredact.core.model import AudioRedaction, BBox, Project, Span, VideoTrack
-            p = Project(media=probe(media), author="selftest")
+            p = Project(media=probe(media, compute_hash=True), author="selftest")
             p.add_audio_redaction(AudioRedaction(0.0, min(1.0, p.media.duration)))
             if p.media.has_video:
                 p.add_video_track(VideoTrack(label="test", spans=[Span(0, 30, {0: BBox(.1, .1, .3, .3)})]))

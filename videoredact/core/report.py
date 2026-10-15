@@ -9,6 +9,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from pathlib import Path
+
 from videoredact import __version__
 from .model import Project, AudioStyle, VideoStyle, Shape, as_enum
 
@@ -44,6 +46,11 @@ def write_csv(project: Project, path: str | Path, result: dict | None = None) ->
             w.writerow(["output_file", result.get("output", "")])
             w.writerow(["output_sha256", result.get("output_sha256", "")])
         w.writerow(["software", f"VideoRedact {__version__}"])
+        if result:
+            w.writerow(["source_sha256_at_export", result.get("source_sha256_at_export", "")])
+            w.writerow(["source_unchanged_since_open", result.get("source_unchanged", "")])
+            w.writerow(["audit_manifest", result.get("audit_json", "")])
+            w.writerow(["audit_manifest_sha256", result.get("manifest_sha256", "")])
 
 
 def write_pdf(project: Project, path: str | Path, result: dict | None = None) -> None:
@@ -76,6 +83,11 @@ def write_pdf(project: Project, path: str | Path, result: dict | None = None) ->
     if result:
         meta += [["Output file", Paragraph(result.get("output", ""), mono)],
                  ["Output SHA-256", Paragraph(result.get("output_sha256", ""), mono)]]
+        if result.get("source_unchanged") is not None:
+            meta.append(["Source integrity", "source file unchanged since it was opened (SHA-256 re-verified at export)"
+                         if result["source_unchanged"] else "WARNING: source SHA-256 at export differs from the hash taken at open"])
+        if result.get("manifest_sha256"):
+            meta.append(["Audit manifest", Paragraph(f"{Path(result.get('audit_json', '')).name}  SHA-256 {result['manifest_sha256']}", mono)])
         if result.get("clip"):
             a, b = result["clip"]
             meta.append(["Exported range", f"{fmt_time(a)} - {fmt_time(b) if b is not None else 'end of recording'} of the source"])
@@ -136,6 +148,25 @@ def write_pdf(project: Project, path: str | Path, result: dict | None = None) ->
                             ("VALIGN", (0, 0), (-1, -1), "TOP"),
                             ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey)]))
     story += [vt, Spacer(1, 12)]
+
+    # ---- models ----------------------------------------------------------
+    try:
+        from .audit import model_inventory, engine_info
+        inv = model_inventory()
+        eng = engine_info()
+        story.append(Paragraph("Detection / recognition models", styles["Heading2"]))
+        story.append(Paragraph(f"Inference tier: {eng.get('tier', '?')} ({eng.get('provider', '?')}); "
+                               f"ONNX Runtime {eng.get('onnxruntime', '-')}, OpenVINO {eng.get('openvino', '-')}, OpenCV {eng.get('opencv', '-')}", small))
+        rows = [["Model", "Purpose", "License", "SHA-256"]]
+        for m in inv:
+            rows.append([m["name"], Paragraph(m["purpose"], small), m["license"], Paragraph(m["sha256"], mono)])
+        mt = Table(rows, repeatRows=1, colWidths=[1.3 * inch, 2.6 * inch, 1.4 * inch, 4.4 * inch])
+        mt.setStyle(TableStyle([("FONT", (0, 0), (-1, -1), "Helvetica", 7.5), ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8),
+                                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dde3ea")), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey)]))
+        story += [mt, Spacer(1, 12)]
+    except Exception:
+        pass
 
     # ---- audit log -------------------------------------------------------
     story.append(PageBreak())

@@ -8,6 +8,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# This script is the one sanctioned way to download models: run it on a connected machine,
+# then copy %LOCALAPPDATA%\VideoRedact\models to the offline workstation (or let the installer
+# bundle them). It overrides the application's offline default for its own process only.
+import os  # noqa: E402
+os.environ.pop("VIDEOREDACT_OFFLINE", None)
+os.environ.pop("HF_HUB_OFFLINE", None)
+from videoredact.paths import settings  # noqa: E402
+settings["offline"] = False
+
 from videoredact.vision.models import MODELS, ensure_model, is_available, model_path  # noqa: E402
 
 

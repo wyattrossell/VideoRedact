@@ -47,7 +47,14 @@ undo/redo, real-footage QA, installer build has not been run yet.
   + OpenCV. Detection runs on frames downscaled to <=960 px, tracking <=640 px.
 - **Redaction styles are user-selectable** per project default and per item:
   audio beep/silence/low tone/noise; video black/blur/pixelate; rect/ellipse.
-  Black box is the only style we describe as guaranteed irreversible.
+  Black box is the default. Since v0.1.10 pixelate has a 16 px block floor and
+  "blur" is a heavy blur (area-average to ~6 samples); light Gaussian blur is gone
+  because it is partially reversible (docs/CJIS_COMPLIANCE.md section 5).
+- **Offline by default** (v0.1.10): `settings.offline=True`, `check_updates=False`;
+  `videoredact/offline.py` runs on package import and blocks `openvino_telemetry`
+  (it posts to Google Analytics when no consent file exists). Every new dependency
+  must pass `python -m videoredact.app --selftest --offline-check tests/data/sample.mp4`
+  (exit 0, "0 blocked connection attempt(s)") before it ships.
 - **Reports**: PDF + CSV with SHA-256 of source and output and the audit log; no
   thumbnails of redacted content. Project file is JSON (`.vrproj`).
 - **Boxes stored normalized (0..1)** with keyframes per visibility span;
@@ -224,6 +231,16 @@ samples/ (720p30 Axon clips), i7-14700T:
 | Export 640x360 (libx264 veryfast) | ~350 fps |
 
 ## Log
+
+- 2026-10-15: Phase 4 (evidence integrity). core/audit.py writes a self-hashed
+  `<output>_audit.json` per export (operator, versions, model SHA-256s, thresholds,
+  all tracks/boxes/edits, verification); export re-hashes the source and flags a
+  change; PDF/CSV print the manifest hash and a model table. Pixelate floor 16 px,
+  blur made heavy, black stays default. Offline hardening in videoredact/offline.py;
+  `--selftest --offline-check` blocks sockets: first run caught openvino_telemetry
+  -> www.google-analytics.com (fixed by excluding/blocking the package). Settings
+  offline=True, check_updates=False. docs/CJIS_COMPLIANCE.md + PHASE4_NOTES.md.
+  tests/test_audit.py (12 tests). Released as v0.1.10.
 
 - 2026-10-15 (late): v0.1.9 built (700 MB incl. openvino), published, installed
   per-user, self-test OK on the frozen build: tier=intel via openvino:GPU.0,

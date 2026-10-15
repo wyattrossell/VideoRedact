@@ -36,7 +36,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     # imageio_ffmpeg is a dev-only fallback; the installer ships bin/ffmpeg.exe instead
-    excludes=["imageio_ffmpeg", "torch", "tensorflow", "matplotlib", "tkinter", "PyQt5", "PyQt6",
+    excludes=["openvino_telemetry", "imageio_ffmpeg", "torch", "tensorflow", "matplotlib", "tkinter", "PyQt5", "PyQt6",
               "IPython", "jupyter", "pytest", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets",
               "PySide6.Qt3DCore", "PySide6.QtQuick", "PySide6.QtQml", "PySide6.QtCharts", "PySide6.QtDataVisualization",
               "PySide6.QtPdf", "PySide6.QtBluetooth", "PySide6.QtNfc", "PySide6.QtSensors", "PySide6.QtSerialPort",

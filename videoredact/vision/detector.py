@@ -85,6 +85,10 @@ def _ort_session(model_bytes_or_path, threads: int = 0):
     falling back to CPU if the accelerated provider fails to initialise."""
     import onnxruntime as ort
     from .accel import preferred_providers
+    try:
+        ort.disable_telemetry_events()   # Windows ETW usage events; local only, but off for CJIS anyway
+    except Exception:
+        pass
     so = ort.SessionOptions()
     so.intra_op_num_threads = threads or max(1, min(4, (os.cpu_count() or 4) // 2))
     so.add_session_config_entry("session.intra_op.allow_spinning", "0")

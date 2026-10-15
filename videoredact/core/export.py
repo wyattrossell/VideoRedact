@@ -39,6 +39,7 @@ class ExportOptions:
     audio_pad_s: float = 0.05
     write_report: bool = True
     write_project: bool = True
+    write_audit: bool = True               # JSON audit manifest sidecar (<output>_audit.json)
     threads: int = 0  # 0 = ffmpeg default (all cores)
     verify_labels: Optional[list] = None   # e.g. ["face"]: re-detect in the output and report uncovered hits
     start_s: float = 0.0                   # clip range (seconds); end_s None = to the end
@@ -282,24 +283,23 @@ def export_project(project: Project, opts: ExportOptions,
         # ---------------- hashes + sidecars ----------------
         prog(0.97, "Hashing output")
         result["output_sha256"] = sha256_file(out_path)
-        if not project.media.sha256:
-            prog(0.98, "Hashing source")
-            project.media.sha256 = sha256_file(src_orig)
+        # The original is never modified; prove it: re-hash at export and compare with the
+        # hash taken when the file was opened (chain of custody, SWGDE working-copy practice).
+        prog(0.98, "Verifying source hash")
+        src_hash_now = sha256_file(src_orig)
+        result["source_sha256_at_export"] = src_hash_now
+        if project.media.sha256:
+            result["source_unchanged"] = (src_hash_now == project.media.sha256)
+            if not result["source_unchanged"]:
+                project.log("WARNING_source_hash_changed", f"open={project.media.sha256[:16]}… export={src_hash_now[:16]}…")
+        else:
+            project.media.sha256 = src_hash_now
+            result["source_unchanged"] = None
         result["source_sha256"] = project.media.sha256
         result["elapsed_s"] = time.time() - t0
         project.log("export", f"{out_path.name} sha256={result['output_sha256'][:16]}... in {result['elapsed_s']:.0f}s")
 
         csv_p, pdf_p, proj_p = _report_paths(out_path)
-        if opts.write_project:
-            project.save(proj_p)
-            result["project"] = str(proj_p)
-        if opts.write_report:
-            prog(0.99, "Writing report")
-            from .report import write_csv, write_pdf
-            write_csv(project, csv_p, result)
-            write_pdf(project, pdf_p, result)
-            result["report_csv"] = str(csv_p)
-            result["report_pdf"] = str(pdf_p)
         if opts.verify_labels:
             prog(0.99, "Verifying the redacted output…")
             from .verify import verify_output
@@ -317,6 +317,27 @@ def export_project(project: Project, opts: ExportOptions,
                         f.write(f"{u.time:.2f},{u.frame},{u.label},{u.score:.2f},{u.covered:.2f},"
                                 f"{u.bbox.x:.4f},{u.bbox.y:.4f},{u.bbox.w:.4f},{u.bbox.h:.4f}\n")
                 result["verification_csv"] = str(vpath)
+        # Order matters: verification first so the manifest records it; the project file next so
+        # the manifest can hash it; the manifest before the report so the PDF/CSV can print the
+        # manifest hash. The "audit_manifest" log line is kept in memory only so the saved project
+        # still matches the hash recorded in the manifest.
+        if opts.write_project:
+            project.save(proj_p)
+            result["project"] = str(proj_p)
+        if opts.write_report:   # paths first so the manifest can name them; files written below
+            result["report_csv"] = str(csv_p)
+            result["report_pdf"] = str(pdf_p)
+        if opts.write_audit:
+            from .audit import write_manifest
+            audit_p = Path(str(out_path.with_suffix("")) + "_audit.json")
+            result["audit_json"] = str(audit_p)
+            result["manifest_sha256"] = write_manifest(project, result, opts, audit_p)
+            project.log("audit_manifest", f"{audit_p.name} sha256={result['manifest_sha256'][:16]}...")
+        if opts.write_report:
+            prog(0.995, "Writing report")
+            from .report import write_csv, write_pdf
+            write_csv(project, csv_p, result)
+            write_pdf(project, pdf_p, result)
         prog(1.0, "Export complete")
         return result
     finally:

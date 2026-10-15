@@ -902,6 +902,11 @@ class MainWindow(QMainWindow):
                 lines.append(f"\nReport: {res['report_pdf']}\n        {res['report_csv']}")
             if "project" in res:
                 lines.append(f"Project: {res['project']}")
+            if res.get("audit_json"):
+                lines.append(f"Audit manifest: {res['audit_json']}\n   SHA-256 {res['manifest_sha256'][:32]}…")
+            if res.get("source_unchanged") is False:
+                lines.append("\nWARNING: the source file's SHA-256 at export differs from the hash taken when it was opened. "
+                             "The file changed on disk; check chain of custody before releasing.")
             lines.append(f"\nTook {res['elapsed_s']:.0f} s.")
             vr = res.get("verify")
             icon = QMessageBox.Information
@@ -1005,7 +1010,7 @@ class MainWindow(QMainWindow):
     def schedule_update_check(self) -> None:
         """Called once after the window is shown. Checks GitHub Releases in the
         background a few seconds after startup, if enabled in settings."""
-        if settings.get("check_updates", True):
+        if settings.get("check_updates", False):
             QTimer.singleShot(4000, lambda: self.check_for_updates(manual=False))
 
     def check_for_updates(self, manual: bool) -> None:

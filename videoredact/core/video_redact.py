@@ -14,8 +14,10 @@ import numpy as np
 
 from .model import BBox, Shape, VideoStyle, VideoTrack, as_enum
 
-PIXELATE_BLOCKS = 8     # blocks across the box's shorter side
+PIXELATE_BLOCKS = 8     # blocks across the box's shorter side ...
+PIXELATE_MIN_BLOCK = 16  # ... but never smaller than this many output pixels per block (irreversibility floor)
 BLUR_FRACTION = 0.25    # kernel size as fraction of the box's shorter side
+BLUR_DOWNSCALE = 6      # heavy blur: the region is reduced to at most this many pixels across before blurring
 
 
 def _region_styled(roi: np.ndarray, style: VideoStyle) -> np.ndarray:
@@ -24,18 +26,21 @@ def _region_styled(roi: np.ndarray, style: VideoStyle) -> np.ndarray:
         return np.zeros_like(roi)
     short = max(1, min(h, w))
     if style == VideoStyle.PIXELATE:
-        bw = max(1, w * PIXELATE_BLOCKS // short)
-        bh = max(1, h * PIXELATE_BLOCKS // short)
+        # block size = short side / PIXELATE_BLOCKS, but at least PIXELATE_MIN_BLOCK px: a 30 px
+        # face becomes 2x2 blocks, a 600 px screen 8 blocks across. Each block is the mean colour
+        # of its area; nothing finer survives (de-pixelation attacks need many more blocks).
+        block = max(PIXELATE_MIN_BLOCK, short // PIXELATE_BLOCKS)
+        bw = max(1, int(round(w / block)))
+        bh = max(1, int(round(h / block)))
         small = cv2.resize(roi, (bw, bh), interpolation=cv2.INTER_AREA)
         return cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
     if style == VideoStyle.BLUR:
-        k = max(3, int(short * BLUR_FRACTION) | 1)
-        # downscale -> blur -> upscale is both faster and stronger than a huge kernel
-        ds = max(1, short // 32)
+        # "heavy blur": average the region down to <= BLUR_DOWNSCALE px across, blur that, scale back.
+        # This is a smooth-looking pixelation at ~6 blocks: light Gaussian blur was deliberately
+        # removed because it is partially reversible (see docs/CJIS_COMPLIANCE.md).
+        ds = max(1, short // BLUR_DOWNSCALE)
         small = cv2.resize(roi, (max(1, w // ds), max(1, h // ds)), interpolation=cv2.INTER_AREA)
-        ks = max(3, (k // ds) | 1)
-        small = cv2.GaussianBlur(small, (ks, ks), 0)
-        small = cv2.GaussianBlur(small, (ks, ks), 0)
+        small = cv2.GaussianBlur(small, (3, 3), 0)
         return cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
     raise ValueError(style)
 

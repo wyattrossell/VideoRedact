@@ -6,6 +6,7 @@ installer can ship them and machines without internet still work.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import unicodedata
 from typing import Callable, Iterable, Optional
@@ -45,6 +46,12 @@ class Transcriber:
         # network: on locked-down machines the Hugging Face check can hang for a long time.
         if (root / f"models--Systran--faster-whisper-{model_size}" / "snapshots").exists():
             local_only = True
+        else:
+            from videoredact.paths import settings
+            if settings.get("offline", True) or os.environ.get("VIDEOREDACT_OFFLINE") == "1":
+                raise RuntimeError(f"Speech model '{model_size}' is not installed and offline mode is on. "
+                                   f"Run scripts/fetch_models.py --whisper {model_size} on a connected machine and copy "
+                                   f"{root} to this computer, or turn off offline mode in Settings.")
         self.model = WhisperModel(model_size, device=device, compute_type=compute_type,
                                   cpu_threads=cpu_threads, download_root=str(root),
                                   local_files_only=local_only)

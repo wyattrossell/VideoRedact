@@ -110,7 +110,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "tracker": "vit",              # vit | kcf | csrt (kcf/csrt need opencv-contrib)
     "media_backend": "",            # unused since the custom player; kept for settings compatibility
     "detector_model": "yolox_tiny",
-    "check_updates": True,          # ask GitHub Releases for a newer installer at startup
+    "check_updates": False,         # opt-in: the only network call the app can make (GitHub Releases); off for CJIS
+    "offline": True,                # no model downloads at runtime; bundled/pre-fetched models only
     "skip_version": "",             # user chose "skip this version"
     "vad": False,                   # whisper voice-activity filter; off: catches quiet speech in noisy body-cam audio
     "track_step": 2,                # tracker processes every N-th frame

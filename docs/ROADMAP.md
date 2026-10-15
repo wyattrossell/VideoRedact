@@ -27,6 +27,13 @@ docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
 - [ ] CUDA/TensorRT tier: detected, wired, no working pip runtime on the dev laptop; fleet has no NVIDIA.
 - [ ] Batched iGPU inference and INT8 (needs the labelled set to confirm recall).
 
+## Done in Phase 4 (evidence integrity, 2026-10-15) - see docs/PHASE4_NOTES.md and docs/CJIS_COMPLIANCE.md
+- [x] Self-hashed JSON audit manifest per export (operator, versions, model hashes, thresholds, every track/box/edit, verification).
+- [x] Source re-hashed at export and compared with the open-time hash; mismatch flagged in dialog, PDF, project log.
+- [x] Irreversible styles: pixelate 16 px block floor, blur made heavy; black default.
+- [x] Offline by default: no update check, no runtime downloads, telemetry blocked (openvino_telemetry found posting to Google Analytics and excluded); `--selftest --offline-check` socket guard.
+- [ ] Manifest signing / hash chain into an evidence system; `--verify <output>` one-shot checker.
+
 ## Top 10 next, drawn from the commercial / legal / technical research
 1. **Review queue** for auto-detections: list every track with a thumbnail, jump-to, approve/delete, "mark all reviewed", keyboard F / Shift+F to step through (Axon/Motorola pattern). Biggest reviewer time saver. (M)
 2. **Exemption code + reason per redaction**, state pick-lists, exemption log in the PDF/CSV (FOIA 552(b), RCW 42.56.210). (S)
@@ -36,7 +43,7 @@ docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
 6. **License plate detector**: open-image-models YOLOv9-t (MIT) after checking training-data terms. (S)
 7. **Audio: speaker diarization** via sherpa-onnx (mute one voice), **keyword spotting**, whisper large-v3-turbo as "accurate" mode, loudnorm pre-pass. (M)
 8. **Axon-style shortcuts** (A/D frame step with hold, Q/E 2 s, W/S resize, [ ] trim to playhead, hold M for audio) + in/out trim and clip-only export. (S)
-9. **Tamper-evident audit log** (hash-chained, Windows user) + review/approval state + per-request work timer (cost recovery). (M)
+9. ~~Tamper-evident audit log~~ done as the per-export manifest (Phase 4); still open: review/approval state + per-request work timer (cost recovery). (M)
 10. **Batch queue** with presets, overnight run, watch folder (CaseGuard pattern). (M)
 
 ## Next up
@@ -67,7 +74,7 @@ docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
 ## Evidence / workflow
 - [ ] Report: include frame thumbnails *with redaction applied* as optional appendix.
 - [ ] Batch mode: apply the same word list / detector settings to a folder of files.
-- [ ] Verify output hash on reopen; warn if project media hash changed.
+- [x] Source hash re-verified at export (Phase 4). [ ] Also verify on project reopen.
 - [ ] Keyboard-first review mode (J/K/L shuttle, I/O marks).
 
 ## Packaging

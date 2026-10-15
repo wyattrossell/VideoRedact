@@ -118,7 +118,7 @@ def installer_args(setup_path: str, exe_path: str) -> list[str]:
     follows where the running copy is installed so a per-machine install does
     not silently gain a second per-user copy."""
     exe_lower = exe_path.lower()
-    per_machine = any(k in exe_lower for k in ("\program files", "\programfiles"))
+    per_machine = any(k in exe_lower for k in ("\\program files", "\\programfiles"))
     scope = "/ALLUSERS" if per_machine else "/CURRENTUSER"
     return [setup_path, "/SILENT", "/SUPPRESSMSGBOXES", "/NOCLOSEAPPLICATIONS", "/NORESTART", scope]
 

@@ -146,13 +146,16 @@ class SettingsDialog(QDialog):
         f4.addRow("Models folder", QLabel(str(models_dir())))
         lay.addWidget(g4)
 
-        g5 = QGroupBox("Updates")
+        g5 = QGroupBox("Network (everything else in this program is offline)")
         f5 = QFormLayout(g5)
         self.updates = QCheckBox("Check GitHub for a newer version at startup")
         self.updates.setChecked(bool(settings.get("check_updates", True)))
         self.updates.setToolTip("Only the version number of the latest release is requested from GitHub. "
                                 "No media or project data is ever sent.")
         f5.addRow(self.updates)
+        self.offline = QCheckBox("Offline mode: never download models at runtime (CJIS default; bundled models only)")
+        self.offline.setChecked(bool(settings.get("offline", True)))
+        f5.addRow(self.offline)
         lay.addWidget(g5)
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -182,6 +185,7 @@ class SettingsDialog(QDialog):
         s["detect_conf"] = self.dconf.value()
         s["face_conf"] = self.fconf.value()
         s["check_updates"] = self.updates.isChecked()
+        s["offline"] = self.offline.isChecked()
         if self.updates.isChecked():
             s["skip_version"] = ""
         s.save()

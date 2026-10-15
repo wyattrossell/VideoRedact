@@ -72,6 +72,12 @@ def selftest(media: str | None = None) -> int:
     from videoredact.paths import models_dir, user_data_dir, resource_root
     lines.append(f"VideoRedact {__version__}  frozen={getattr(sys, 'frozen', False)}")
     try:
+        from videoredact.paths import settings as _s
+        lines.append(f"offline:   {bool(_s.get('offline', True))}  (model downloads {'disabled' if _s.get('offline', True) else 'ENABLED'}; "
+                     f"update check {'on' if _s.get('check_updates') else 'off'})")
+    except Exception:
+        pass
+    try:
         from videoredact.vision.accel import detect_hardware
         hw = detect_hardware()
         lines.append(f"hardware:  {hw.summary()}")
@@ -186,16 +192,67 @@ def selftest(media: str | None = None) -> int:
     return 0 if ok_all else 1
 
 
+def _offline_env() -> None:
+    """Network/telemetry hardening (see videoredact/offline.py; already applied on package import)."""
+    from videoredact.offline import harden
+    harden()
+    try:
+        from videoredact.paths import settings
+        if settings.get("offline", True):
+            os.environ.setdefault("VIDEOREDACT_OFFLINE", "1")
+    except Exception:
+        pass
+
+
+class _NoNetwork:
+    """Socket guard used by `--selftest --offline-check`: any outbound connection raises."""
+    def __init__(self):
+        import socket
+        self.socket = socket
+        self.calls: list[str] = []
+        self._orig_connect = socket.socket.connect
+        self._orig_connect_ex = socket.socket.connect_ex
+        self._orig_create = socket.create_connection
+
+    def __enter__(self):
+        guard = self
+
+        def blocked(self_, address, *a, **k):
+            guard.calls.append(str(address))
+            raise OSError(f"network blocked by offline check: {address}")
+        self.socket.socket.connect = blocked
+        self.socket.socket.connect_ex = blocked
+        self.socket.create_connection = lambda address, *a, **k: blocked(None, address)
+        return self
+
+    def __exit__(self, *a):
+        self.socket.socket.connect = self._orig_connect
+        self.socket.socket.connect_ex = self._orig_connect_ex
+        self.socket.create_connection = self._orig_create
+
+
 def main() -> None:
     # Must be first: parallel detection uses multiprocessing (spawn); in a frozen build the
     # child processes re-run this executable and freeze_support() hands control to them.
     import multiprocessing
     multiprocessing.freeze_support()
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    _offline_env()
     _setup_logging()
     _install_excepthook()
     if "--selftest" in sys.argv:
         rest = [a for a in sys.argv[1:] if not a.startswith("--")]
+        if "--offline-check" in sys.argv:
+            # prove no network: run the self-test with every socket connection blocked
+            with _NoNetwork() as guard:
+                rc = selftest(rest[0] if rest else None)
+            msg = f"offline check: {len(guard.calls)} blocked connection attempt(s) {guard.calls[:5]}"
+            try:
+                sys.__stdout__.write(msg + "\n")
+            except Exception:
+                pass
+            import logging
+            logging.getLogger("selftest").info(msg)
+            sys.exit(rc if not guard.calls else 2)
         sys.exit(selftest(rest[0] if rest else None))
     import logging
     from videoredact import __version__

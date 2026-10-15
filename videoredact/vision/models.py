@@ -6,6 +6,7 @@ pre-downloads them for bundling into the installer.
 """
 from __future__ import annotations
 
+import os
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,11 +67,18 @@ def is_available(name: str) -> bool:
 
 
 def ensure_model(name: str, progress: Optional[ProgressCB] = None) -> Path:
-    """Download the model if missing. Raises on failure (e.g. no internet)."""
+    """Return the model path; download only when offline mode is off.
+    In offline mode (default) a missing model is an error that names the file, so a
+    locked-down machine never attempts a network connection."""
     spec = MODELS[name]
     dest = model_path(name)
     if is_available(name):
         return dest
+    from videoredact.paths import settings
+    if settings.get("offline", True) or os.environ.get("VIDEOREDACT_OFFLINE") == "1":
+        raise RuntimeError(f"Model '{spec.filename}' is not installed and offline mode is on. "
+                           f"Copy it into {models_dir()} (run scripts/fetch_models.py on a connected machine) "
+                           f"or turn off offline mode in Settings.")
     tmp = dest.with_suffix(".part")
     req = urllib.request.Request(spec.url, headers={"User-Agent": "VideoRedact/0.1"})
     with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:

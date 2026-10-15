@@ -27,8 +27,17 @@ ordinary Windows PC (no GPU required). MIT licensed.
 **Evidence handling**
 - Preview is a faithful rendering of the export (same code path).
 - Export writes the redacted media plus a PDF and CSV **redaction report**
-  (every redaction, who/when, SHA-256 of source and output, full audit log)
-  and a reopenable `.vrproj` project file. The original is never modified.
+  (every redaction, who/when, SHA-256 of source and output, full audit log),
+  a reopenable `.vrproj` project file and a JSON **audit manifest**
+  (`<output>_audit.json`: operator, software and model versions with hashes,
+  thresholds, every track's frame ranges and boxes, every manual edit; self-hashed,
+  hash printed in the PDF). The original is never modified: its SHA-256 is taken at
+  open and re-checked at export.
+- Redaction is irreversible: solid black by default; pixelate uses 16 px+ blocks;
+  "blur" is a heavy blur (6 samples across). No light Gaussian blur.
+- Fully offline: no telemetry, no cloud calls, no model downloads at runtime
+  (models are bundled; OpenVINO's telemetry package is excluded). Prove it with
+  `VideoRedact.exe --selftest --offline-check <file>`. See docs/CJIS_COMPLIANCE.md.
 
 ## Status
 
@@ -74,12 +83,12 @@ or `-Bump major`, `-NoBump` to rebuild the current version). Output goes to
 `Published\` (git-ignored because installers are hundreds of MB) together with
 `latest.json` and `SHA256SUMS.txt`.
 
-**Auto-update:** installed copies check the latest GitHub release a few seconds
-after startup (and from Help ▸ Check for updates). If a newer
-`VideoRedact-X.Y.Z-Setup.exe` asset exists, the user is offered *Install now*;
-the installer is downloaded to %TEMP%, run silently, closes and reopens the app.
-Only the public release metadata is requested from GitHub; media never leaves
-the machine. The check can be turned off in Settings ▸ Updates.
+**Updates (opt-in):** Help ▸ Check for updates asks GitHub for the latest release;
+if a newer `VideoRedact-X.Y.Z-Setup.exe` asset exists, the user is offered
+*Install now*; the installer is downloaded to %TEMP%, run silently, closes and
+reopens the app. The automatic check at startup is **off by default** (CJIS
+offline posture) and can be turned on in Settings ▸ Network. Only the public
+release metadata is requested from GitHub; media never leaves the machine.
 
 ## Tests
 

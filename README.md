@@ -83,12 +83,15 @@ or `-Bump major`, `-NoBump` to rebuild the current version). Output goes to
 `Published\` (git-ignored because installers are hundreds of MB) together with
 `latest.json` and `SHA256SUMS.txt`.
 
-**Updates (opt-in):** Help ▸ Check for updates asks GitHub for the latest release;
-if a newer `VideoRedact-X.Y.Z-Setup.exe` asset exists, the user is offered
-*Install now*; the installer is downloaded to %TEMP%, run silently, closes and
-reopens the app. The automatic check at startup is **off by default** (CJIS
-offline posture) and can be turned on in Settings ▸ Network. Only the public
-release metadata is requested from GitHub; media never leaves the machine.
+**Updates (notify only):** a few seconds after startup, in a background thread
+with a 5 s timeout, the app asks GitHub Releases for the latest version. If it is
+newer you get a notification with a link to the release page; nothing is
+downloaded or installed by the app. Offline machines see nothing. Help ▸ Check
+for updates runs the same check on demand. Turn the startup check off in
+Settings ▸ Network. Only the public release metadata is requested; media never
+leaves the machine. Versions live in `VERSION` / `videoredact/__init__.py` /
+`pyproject.toml` (kept in sync by `scripts/bump_version.py`) and every release
+has a `CHANGELOG.md` section that becomes the GitHub release notes.
 
 ## Tests
 

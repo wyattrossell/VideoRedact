@@ -8,8 +8,8 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt, QSize, QTimer, QThread, Signal, QObject
-from PySide6.QtGui import QAction, QKeySequence, QIcon
+from PySide6.QtCore import Qt, QSize, QTimer, QThread, Signal, QObject, QUrl
+from PySide6.QtGui import QAction, QKeySequence, QIcon, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QComboBox, QDockWidget, QFileDialog, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar, QStyle, QTabWidget,
                                QToolBar, QVBoxLayout, QWidget, QInputDialog, QDialog)
@@ -1010,7 +1010,7 @@ class MainWindow(QMainWindow):
     def schedule_update_check(self) -> None:
         """Called once after the window is shown. Checks GitHub Releases in the
         background a few seconds after startup, if enabled in settings."""
-        if settings.get("check_updates", False):
+        if settings.get("check_updates", True):
             QTimer.singleShot(4000, lambda: self.check_for_updates(manual=False))
 
     def check_for_updates(self, manual: bool) -> None:
@@ -1018,8 +1018,10 @@ class MainWindow(QMainWindow):
             result = Signal(object, str)
 
             def run(self_):
+                # background thread + short timeout: the UI never waits on the network; a
+                # failure at startup is silent (offline machines), a manual check reports it
                 try:
-                    self_.result.emit(updater.fetch_latest(), "")
+                    self_.result.emit(updater.fetch_latest(timeout=updater.DEFAULT_TIMEOUT_S), "")
                 except Exception as e:  # noqa: BLE001
                     self_.result.emit(None, str(e))
 
@@ -1049,40 +1051,22 @@ class MainWindow(QMainWindow):
         box = QMessageBox(QMessageBox.Information, "Update available",
                           f"VideoRedact {info.version} is available (you have {__version__}).\n\n"
                           + (f"{notes}\n\n" if notes else "")
-                          + "Install it now? The application will close, update and reopen.", parent=self)
-        b_install = box.addButton("Install now", QMessageBox.AcceptRole)
-        b_later = box.addButton("Later", QMessageBox.RejectRole)
+                          + "Nothing is installed automatically. Open the release page to download the "
+                            "installer, then run it (an administrator may be required on managed PCs).",
+                          parent=self)
+        box.setTextFormat(Qt.PlainText)
+        box.setInformativeText(f"<a href=\"{info.page}\">{info.page}</a>")
+        b_open = box.addButton("Open download page", QMessageBox.AcceptRole)
+        box.addButton("Later", QMessageBox.RejectRole)
         b_skip = box.addButton("Skip this version", QMessageBox.DestructiveRole)
-        box.setDefaultButton(b_install)
+        box.setDefaultButton(b_open)
         box.exec()
         if box.clickedButton() == b_skip:
             settings["skip_version"] = info.version
             settings.save()
-        elif box.clickedButton() == b_install:
-            self._install_update(info)
-
-    def _install_update(self, info) -> None:
-        if not info.url:
-            QMessageBox.information(self, "Update", f"This release has no installer attached yet.\nSee {info.page}")
-            return
-        if not self._confirm_discard():
-            return
-
-        def job(prog, cancel):
-            return updater.download(info, prog, cancel)
-
-        def done(path):
-            if not path:
-                return
-            self.dirty = False
-            try:
-                updater.launch_installer(path, restart=True)
-            except Exception as e:  # noqa: BLE001
-                QMessageBox.critical(self, "Update", f"Could not start the installer:\n{e}\n\nIt was saved to:\n{path}")
-                return
-            QApplication.instance().quit()
-
-        run_task(self, f"Downloading VideoRedact {info.version}…", job, done)
+        elif box.clickedButton() == b_open:
+            if not QDesktopServices.openUrl(QUrl(info.page)):
+                updater.open_release_page(info)
 
     def open_log_folder(self) -> None:
         from videoredact.paths import log_dir

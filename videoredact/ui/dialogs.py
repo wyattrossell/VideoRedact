@@ -148,7 +148,7 @@ class SettingsDialog(QDialog):
 
         g5 = QGroupBox("Network (everything else in this program is offline)")
         f5 = QFormLayout(g5)
-        self.updates = QCheckBox("Check GitHub for a newer version at startup")
+        self.updates = QCheckBox("Check GitHub for a newer version at startup (notification + link only; never installs)")
         self.updates.setChecked(bool(settings.get("check_updates", True)))
         self.updates.setToolTip("Only the version number of the latest release is requested from GitHub. "
                                 "No media or project data is ever sent.")

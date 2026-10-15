@@ -89,3 +89,24 @@ def test_main_window_style_changes(app, tmp_path):
     w._save_to(str(tmp_path / "ui.vrproj"))
     assert Project.load(tmp_path / "ui.vrproj").default_video_style is VideoStyle.PIXELATE
     w.close()
+
+
+def test_update_notification_is_notify_only(app, monkeypatch):
+    """Phase 5: a newer release shows a dialog with a link; nothing is downloaded or installed."""
+    from PySide6.QtWidgets import QMessageBox
+    from PySide6.QtGui import QDesktopServices
+    from videoredact import updater
+    from videoredact.ui.main_window import MainWindow
+    w = MainWindow()
+    shown = []
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: shown.append(self.text()) or 0)
+    opened = []
+    monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url.toString()) or True))
+    info = updater.UpdateInfo("99.0.0", "https://example.invalid/setup.exe", 1, "notes", "https://github.com/wyattrossell/VideoRedact/releases/tag/v99.0.0")
+    w._on_update_result(info, "", manual=True)
+    assert shown and "99.0.0" in shown[0] and "Nothing is installed automatically" in shown[0]
+    assert not opened                      # "Later" is what a no-op exec() leaves selected: no browser launch
+    assert not hasattr(w, "_install_update")
+    # silent failure at startup, message on manual check
+    w._on_update_result(None, "no network", manual=False)
+    assert len(shown) == 1

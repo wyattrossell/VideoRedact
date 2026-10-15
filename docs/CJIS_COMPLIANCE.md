@@ -13,7 +13,7 @@ and later.
 | Chain of custody for every export | A JSON audit manifest (`<output>_audit.json`) is written beside every export with operator, timestamps, software version, machine, model hashes, thresholds, every redaction (frame ranges and boxes) and every manual edit. The manifest carries its own SHA-256, which is also printed in the PDF report. |
 | Redaction is irreversible | Default style is a solid black fill. Pixelate uses blocks of at least 16 output pixels (each block is the mean colour of its area). "Blur" is a heavy blur: the region is averaged down to about 6 samples across before smoothing. Light Gaussian blur was removed because published attacks recover faces and text from it. |
 | Audio is preserved by default | Audio is copied from the source unless the operator adds audio redactions (beep / silence / low tone / noise over a time range). Audio redactions are listed in the manifest. |
-| Fully offline | No telemetry, no analytics, no cloud calls, no runtime model downloads. All models ship inside the installer. The one optional network feature (checking GitHub for a newer installer) is off by default. Verified by a built-in test that blocks every socket and runs the full pipeline (section 6). |
+| Fully offline | No telemetry, no analytics, no cloud calls, no runtime model downloads. All models ship inside the installer. The one network feature, the startup check of GitHub Releases, requests only the public version number, shows a notification with a link, never installs, and can be turned off in Settings. Verified by a built-in test that blocks every socket and runs the full pipeline (section 6). |
 | Revisable | Every export also writes a `.vrproj` project file. Reopening it restores the transcript, every redaction and the audit log so a redaction can be revised without starting over. |
 | Licensing | MIT application; all bundled models and libraries are MIT/Apache/BSD (see the model table in every PDF report). No GPL/AGPL components in the application code. FFmpeg build licence is noted in `NOTES.md`. |
 
@@ -24,7 +24,7 @@ code paths that *can* open a connection, and how each is controlled:
 
 | Code path | Destination | When it runs | Default |
 |---|---|---|---|
-| Update check (`videoredact/updater.py`) | `https://api.github.com/repos/wyattrossell/VideoRedact/releases/latest`, then `https://github.com/.../releases/download/...` for the installer | Only when **Settings → Network → Check for updates** is on (at startup) or the operator chooses **Help → Check for updates** | **Off** |
+| Update check (`videoredact/updater.py`) | `https://api.github.com/repos/wyattrossell/VideoRedact/releases/latest` (public release metadata: version number, notes). Nothing is downloaded; the user gets a notification with a link to the release page. | A few seconds after startup when **Settings → Network → Check for updates** is on, or when the operator chooses **Help → Check for updates**. Background thread, 5 s timeout, silent when offline. | **On** (notify only). Turn it off in Settings for air-gapped or policy-restricted workstations; no other code path contacts the network. |
 | Model download (`videoredact/vision/models.py`) | `github.com` (OpenCV Zoo, Megvii YOLOX release assets) | Only when a model file is missing **and** offline mode is off | Models are bundled; **offline mode on**, so a missing model is an error, not a download |
 | Speech model (`videoredact/audio/transcribe.py`, faster-whisper / huggingface_hub) | `huggingface.co` | Only when the speech model folder is missing **and** offline mode is off | Bundled; loaded with `local_files_only=True`; `HF_HUB_OFFLINE=1` set process-wide |
 
@@ -120,8 +120,9 @@ timestamp and Windows user, from the moment the file was opened).
    network-monitoring tool such as Windows Resource Monitor or a firewall log if an
    independent confirmation is wanted; the program shows no connections.)
 2. **Settings:** `%LOCALAPPDATA%\VideoRedact\settings.json` should contain
-   `"offline": true` and `"check_updates": false` (both are the defaults; absent keys mean
-   default).
+   `"offline": true` (the default; absent keys mean default). `"check_updates"` defaults to
+   `true` (notify-only); set it to `false` on workstations that must make no outbound
+   connection at all.
 3. **Export integrity:** export a file; confirm `<output>_audit.json` exists, that the hash in
    the PDF report's "Audit manifest" line equals `manifest_sha256` in the file, and that
    `Get-FileHash` on the output and the source equal the values in the manifest.
@@ -146,7 +147,7 @@ timestamp and Windows user, from the moment the file was opened).
   plus the Windows login; there is no separate authentication inside the program.
 * The manifest proves what the software did; it does not sign it. A hash chain into a
   write-once evidence system is the agency's responsibility.
-* Update checking, when an operator turns it on, sends the standard HTTPS request headers
+* Update checking (on by default, notification only) sends the standard HTTPS request headers
   (including a `VideoRedact/<version>` user agent) to GitHub. Nothing about the case is sent.
 * Transcription (speech-to-text) runs locally; its accuracy on body-camera audio is limited
   and the transcript should not be treated as a verbatim record.

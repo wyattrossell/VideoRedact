@@ -137,7 +137,7 @@ def test_default_style_is_solid():
 def test_offline_defaults():
     from videoredact.paths import DEFAULT_SETTINGS
     assert DEFAULT_SETTINGS["offline"] is True
-    assert DEFAULT_SETTINGS["check_updates"] is False
+    assert DEFAULT_SETTINGS["check_updates"] is True   # notify-only, GitHub metadata; Phase 5
 
 
 def test_ensure_model_refuses_download_when_offline(monkeypatch, tmp_path):

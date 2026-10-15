@@ -1,26 +1,25 @@
-"""Self-update via GitHub Releases.
+"""Update notification via GitHub Releases (notify only; no automatic installs).
 
-The build pipeline (installer/build.ps1 + scripts/publish_release.ps1) tags
-every build vX.Y.Z and uploads `VideoRedact-X.Y.Z-Setup.exe` as a release
-asset. At startup (and from Help > Check for updates) the app asks the GitHub
-API for the latest release; if it is newer than the running version it
-offers to download the installer and run it. The installer closes the app,
-upgrades in place (same AppId) and restarts it.
+The build pipeline (installer/build.ps1 + scripts/publish_release.ps1) tags every build
+vX.Y.Z and uploads `VideoRedact-X.Y.Z-Setup.exe` as a release asset. A few seconds after
+startup (if `check_updates` is on) and from Help > Check for updates, the app asks the GitHub
+API for the latest release in a background thread with a short timeout. If it is newer than
+the running version the user is told and offered a link to the release page. Nothing is
+downloaded or installed by the application; the operator (or IT) runs the installer.
 
-Only the public GitHub API is contacted, with no credentials. Machines
-without internet simply get a "could not check" result.
+Only the public GitHub API is contacted, with no credentials and no case data. Machines
+without internet simply get no notification (the failure is silent unless the check was
+started manually). See docs/CJIS_COMPLIANCE.md section 2.
 """
 from __future__ import annotations
 
 import json
+import logging
 import re
-import subprocess
-import sys
-import tempfile
 import urllib.request
+import webbrowser
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from videoredact import __version__
 
@@ -28,19 +27,22 @@ REPO = "wyattrossell/VideoRedact"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 ASSET_RE = re.compile(r"^VideoRedact-(\d+\.\d+\.\d+)-Setup\.exe$", re.I)
-_CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+DEFAULT_TIMEOUT_S = 5.0
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
 class UpdateInfo:
     version: str
-    url: str          # installer asset download URL
+    url: str          # installer asset download URL ("" if the release has no installer yet)
     size: int
     notes: str
-    page: str
+    page: str         # release page to open in the browser
 
 
 def parse_version(v: str) -> tuple[int, ...]:
+    """'v1.2.3' / '1.2' / '2.0.0-beta' -> (major, minor, patch); non-numeric parts count as 0."""
     v = v.strip().lstrip("vV")
     parts = []
     for p in v.split(".")[:3]:
@@ -55,85 +57,48 @@ def is_newer(candidate: str, current: str = __version__) -> bool:
     return parse_version(candidate) > parse_version(current)
 
 
-def fetch_latest(timeout: float = 8.0) -> Optional[UpdateInfo]:
-    """Return info about the latest release, or None if there is no release
-    with an installer asset. Raises on network errors."""
-    req = urllib.request.Request(API_LATEST, headers={
-        "User-Agent": f"VideoRedact/{__version__}", "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = json.loads(r.read().decode("utf-8"))
+def parse_release(data: dict) -> Optional[UpdateInfo]:
+    """Build UpdateInfo from a GitHub 'release' JSON object (pure; used by tests)."""
     tag = data.get("tag_name") or data.get("name") or ""
+    page = data.get("html_url") or RELEASES_PAGE
+    notes = (data.get("body") or "").strip()
     for a in data.get("assets", []):
         m = ASSET_RE.match(a.get("name", ""))
         if m:
             return UpdateInfo(version=m.group(1), url=a["browser_download_url"], size=int(a.get("size", 0)),
-                              notes=(data.get("body") or "").strip(), page=data.get("html_url") or RELEASES_PAGE)
+                              notes=notes, page=page)
     if tag:
-        return UpdateInfo(version=tag.lstrip("v"), url="", size=0, notes=(data.get("body") or "").strip(),
-                          page=data.get("html_url") or RELEASES_PAGE)
+        return UpdateInfo(version=tag.lstrip("vV"), url="", size=0, notes=notes, page=page)
     return None
 
 
-def check_for_update(timeout: float = 8.0) -> Optional[UpdateInfo]:
-    """Latest release if it is newer than the running version, else None."""
-    info = fetch_latest(timeout)
+def fetch_latest(timeout: float = DEFAULT_TIMEOUT_S) -> Optional[UpdateInfo]:
+    """Latest release on GitHub, or None if there is none. Raises on network errors
+    (callers running at startup swallow the error; the manual check shows it)."""
+    req = urllib.request.Request(API_LATEST, headers={
+        "User-Agent": f"VideoRedact/{__version__}", "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    return parse_release(data)
+
+
+def check_for_update(timeout: float = DEFAULT_TIMEOUT_S) -> Optional[UpdateInfo]:
+    """Latest release if it is newer than the running version, else None. Never raises:
+    offline machines get None (the reason is logged at debug level)."""
+    try:
+        info = fetch_latest(timeout)
+    except Exception as e:  # noqa: BLE001  no network, proxy, DNS, rate limit...
+        log.debug("update check failed: %s", e)
+        return None
     if info and is_newer(info.version):
         return info
     return None
 
 
-def download(info: UpdateInfo, progress: Optional[Callable[[float, str], None]] = None,
-             cancel: Optional[Callable[[], bool]] = None) -> Path:
-    if not info.url:
-        raise RuntimeError("This release has no installer attached. Download it from " + info.page)
-    dest = Path(tempfile.gettempdir()) / f"VideoRedact-{info.version}-Setup.exe"
-    tmp = dest.with_suffix(".part")
-    req = urllib.request.Request(info.url, headers={"User-Agent": f"VideoRedact/{__version__}"})
-    with urllib.request.urlopen(req, timeout=30) as r, open(tmp, "wb") as f:
-        total = int(r.headers.get("Content-Length") or info.size or 0)
-        done = 0
-        while True:
-            if cancel and cancel():
-                raise RuntimeError("cancelled")
-            chunk = r.read(1 << 20)
-            if not chunk:
-                break
-            f.write(chunk)
-            done += len(chunk)
-            if progress and total:
-                progress(done / total, f"Downloading update {done / 1e6:.0f} / {total / 1e6:.0f} MB")
-    if total and tmp.stat().st_size != total:
-        tmp.unlink(missing_ok=True)
-        raise RuntimeError("Download incomplete; please try again.")
-    tmp.replace(dest)
-    return dest
-
-
-def installer_args(setup_path: str, exe_path: str) -> list[str]:
-    """Inno Setup arguments for an in-app upgrade.
-
-    /NOCLOSEAPPLICATIONS: the Restart Manager check hung for 20+ minutes on a
-    test machine even with no VideoRedact process alive, so we skip it; the
-    app quits itself before the installer starts. /ALLUSERS vs /CURRENTUSER
-    follows where the running copy is installed so a per-machine install does
-    not silently gain a second per-user copy."""
-    exe_lower = exe_path.lower()
-    per_machine = any(k in exe_lower for k in ("\\program files", "\\programfiles"))
-    scope = "/ALLUSERS" if per_machine else "/CURRENTUSER"
-    return [setup_path, "/SILENT", "/SUPPRESSMSGBOXES", "/NOCLOSEAPPLICATIONS", "/NORESTART", scope]
-
-
-def launch_installer(path: Path, restart: bool = True) -> None:
-    """Start the installer detached; relaunch the app when it finishes.
-    The caller should quit the app right after calling this."""
-    exe = sys.executable if getattr(sys, "frozen", False) else ""
-    args = installer_args(str(path), exe)
-    if sys.platform == "win32":
-        quoted = " ".join(f'"{a}"' if " " in a else a for a in args)
-        cmd = f'{quoted}'
-        if restart and exe:
-            cmd += f' && start "" "{exe}"'
-        flags = _CREATE_NO_WINDOW | getattr(subprocess, "DETACHED_PROCESS", 0)
-        subprocess.Popen(["cmd", "/c", cmd], creationflags=flags, close_fds=True)
-    else:
-        subprocess.Popen(args, close_fds=True)
+def open_release_page(info: Optional[UpdateInfo] = None) -> bool:
+    """Open the release (or releases list) in the default browser. Returns False if that failed."""
+    url = (info.page if info and info.page else RELEASES_PAGE)
+    try:
+        return bool(webbrowser.open(url, new=2))
+    except Exception:  # noqa: BLE001
+        return False

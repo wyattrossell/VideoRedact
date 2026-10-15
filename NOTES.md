@@ -225,6 +225,12 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-15 (late): v0.1.9 built (700 MB incl. openvino), published, installed
+  per-user, self-test OK on the frozen build: tier=intel via openvino:GPU.0,
+  YuNet + YOLOX on the iGPU, parallel auto-detect of the first 1800 frames of
+  the crash-scene clip in 20.6 s with the same 159 tracks (0.1.8: 40.4 s).
+  Installed copy on this laptop: 0.1.9.
+
 - 2026-10-15 (Phase 3, speed): measured decode paths (OpenCV fastest at full
   res; FFmpeg proxy pipes ~500 fps with QuickSync for >1280 px sources),
   inference engines (OpenVINO on the Intel UHD 770 iGPU: YOLOX-tiny 11 ms,

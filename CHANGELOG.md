@@ -7,6 +7,8 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-10-15
+
 ### Changed
 - Update checker now only notifies: a background check of GitHub Releases at startup (5 s
   timeout, silent when offline) shows the new version with a link to the release page. The

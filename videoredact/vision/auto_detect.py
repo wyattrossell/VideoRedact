@@ -395,9 +395,7 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
     last_frame = end - 1
     for L in finished:
         s = L.span
-        # back-fill before the first detection and persist after the last one
-        s.start_frame = max(0, s.start_frame - max(stride, opts.lead_in))
-        s.end_frame = min(last_frame, s.end_frame + max(stride, opts.lead_out))
+        extend_span(s, stride, opts.lead_in, opts.lead_out, last_frame)
         note = f"auto-detected, {L.hits} hits, avg conf {L.score_sum / L.hits:.2f}"
         if L.fallback_hits:
             note += f", head-fallback on {L.fallback_hits} of {L.hits}"
@@ -409,6 +407,19 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
             t.shape = Shape.ELLIPSE if opts.face_shape == "ellipse" else Shape.RECT
         tracks.append(t)
     return link_fragments(tracks, int(opts.link_gap_s * fps))
+
+
+def extend_span(s: Span, stride: int, lead_in: int, lead_out: int, last_frame: int) -> Span:
+    """Back-fill before the first detection and persist after the last one (in place).
+
+    A detector running every `stride` frames first sees an object up to `stride - 1` frames
+    after it appeared, so the span always grows by at least one stride; `lead_in` / `lead_out`
+    (default 15 frames, half a second) cover the frames where the object is small or turned
+    away. The first/last keyframe boxes are held over the extension (Span.bbox_at holds the
+    edge keyframe outside the keyframe range)."""
+    s.start_frame = max(0, s.start_frame - max(stride, lead_in))
+    s.end_frame = min(last_frame, s.end_frame + max(stride, lead_out))
+    return s
 
 
 def _near(a: BBox, b: BBox, gap: int, max_gap: int) -> bool:

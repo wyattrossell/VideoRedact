@@ -85,6 +85,12 @@ def check() -> list[str]:
 
 
 if __name__ == "__main__":
+    # The changelog contains arrows/dashes outside cp1252; PowerShell's default console
+    # encoding would raise UnicodeEncodeError when printing the release notes.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if "--print" in sys.argv:
         print(current())

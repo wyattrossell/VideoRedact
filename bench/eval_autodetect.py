@@ -27,6 +27,8 @@ CONFIGS = {
     "v0.1.7 (iou, no head, no multiscale)": dict(assoc="iou", head_fallback=False, multiscale=False, face_pad=0.1, lead_in=5, lead_out=5),
     "botsort only": dict(assoc="botsort", head_fallback=False, multiscale=False, face_pad=0.1, lead_in=5, lead_out=5),
     "new default (botsort+head+multiscale+pad25+lead15)": dict(),
+    "new default, adaptive stride OFF": dict(adaptive=False),
+    "new default, adaptive + scene-cut OFF": dict(adaptive=False, scene_cut=False),
 }
 
 

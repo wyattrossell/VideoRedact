@@ -1,0 +1,120 @@
+{
+ "version": "0.1.8",
+ "date": "2026-10-15 10:23",
+ "hardware": "Intel(R) Core(TM) i7-14700T (20c/28t), 64 GB, Windows 11 (10.0.26200); tier=cpu via CPUExecutionProvider [CPU only]",
+ "python": "3.13.14",
+ "settings": {
+  "stride": 5,
+  "detect_labels": [
+   "face",
+   "screen",
+   "document",
+   "phone"
+  ],
+  "cover_threshold": 0.9,
+  "gt_classes": [
+   "face",
+   "screen",
+   "phone_screen",
+   "document",
+   "plate",
+   "id_card"
+  ]
+ },
+ "clips": [
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__01-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 32.7,
+    "export": 115.5
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 41.189721500035375,
+   "tracks": 217,
+   "track_frames": 23370,
+   "stage_s": {
+    "decode_detect_pass": 1.476,
+    "detect": 24.134,
+    "track": 13.783,
+    "detect_calls": 271,
+    "assoc_other": 1.798,
+    "decode_export_pass": 1.605,
+    "redact": 8.244,
+    "encode_and_pipe": 1.818
+   },
+   "export_total_s": 11.666405600029975
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__06-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 31.2,
+    "export": 99.7
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 43.26294569997117,
+   "tracks": 140,
+   "track_frames": 19217,
+   "stage_s": {
+    "decode_detect_pass": 1.515,
+    "detect": 25.978,
+    "track": 14.87,
+    "detect_calls": 271,
+    "assoc_other": 0.9,
+    "decode_export_pass": 1.469,
+    "redact": 10.546,
+    "encode_and_pipe": 1.5
+   },
+   "export_total_s": 13.514294600114226
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__11-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 26.6,
+    "export": 57.4
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 50.703081499785185,
+   "tracks": 121,
+   "track_frames": 25207,
+   "stage_s": {
+    "decode_detect_pass": 1.576,
+    "detect": 26.555,
+    "track": 22.359,
+    "detect_calls": 270,
+    "assoc_other": 0.214,
+    "decode_export_pass": 1.359,
+    "redact": 20.763,
+    "encode_and_pipe": 1.351
+   },
+   "export_total_s": 23.472631599986926
+  }
+ ],
+ "aggregate": {
+  "clips": 3,
+  "frames": 4044,
+  "autodetect_fps": 29.9,
+  "export_fps": 83.1,
+  "stage_share": {
+   "decode_detect_pass": 4.57,
+   "detect": 76.67,
+   "track": 51.01,
+   "assoc_other": 2.91,
+   "decode_export_pass": 4.43,
+   "redact": 39.55,
+   "encode_and_pipe": 4.67
+  },
+  "accuracy": {
+   "labelled_frames": 0,
+   "note": "no ground truth yet - run the labeling workflow in bench/README.md"
+  }
+ }
+}

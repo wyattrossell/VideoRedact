@@ -353,6 +353,94 @@ class ExportDialog(QDialog):
         return o
 
 
+class BatchDialog(QDialog):
+    """Queue many files: auto-detect each (parallel workers), save a project next to it,
+    optionally export with verification. Runs as one background job."""
+
+    def __init__(self, settings: Settings, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Batch process files")
+        self.resize(640, 480)
+        self.settings = settings
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel("Each file gets auto-detection and a .vrproj next to it (or in the output folder). "
+                             "Tick Export to also write the redacted file, report and verification. "
+                             "Leave it running overnight; review projects in the morning."))
+        from PySide6.QtWidgets import QListWidget, QAbstractItemView
+        self.list = QListWidget()
+        self.list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        lay.addWidget(self.list, 1)
+        row = QHBoxLayout()
+        b_add = QPushButton("Add files…")
+        b_add.clicked.connect(self._add)
+        b_folder = QPushButton("Add folder…")
+        b_folder.clicked.connect(self._add_folder)
+        b_rm = QPushButton("Remove selected")
+        b_rm.clicked.connect(lambda: [self.list.takeItem(self.list.row(i)) for i in self.list.selectedItems()])
+        row.addWidget(b_add)
+        row.addWidget(b_folder)
+        row.addWidget(b_rm)
+        row.addStretch(1)
+        lay.addLayout(row)
+        f = QFormLayout()
+        self.out = QLineEdit(settings.get("batch_out_dir", ""))
+        self.out.setPlaceholderText("next to each source file")
+        b_out = QPushButton("…")
+        b_out.setFixedWidth(28)
+        b_out.clicked.connect(self._pick_out)
+        orow = QHBoxLayout()
+        orow.addWidget(self.out, 1)
+        orow.addWidget(b_out)
+        ow = QWidget()
+        ow.setLayout(orow)
+        f.addRow("Output folder", ow)
+        self.checks = {}
+        crow = QHBoxLayout()
+        for lbl in AUTO_LABELS:
+            cb = QCheckBox(lbl)
+            cb.setChecked(lbl in settings.get("detect_classes", ["face", "screen", "document"]))
+            self.checks[lbl] = cb
+            crow.addWidget(cb)
+        crow.addStretch(1)
+        cw = QWidget()
+        cw.setLayout(crow)
+        f.addRow("Detect", cw)
+        self.export = QCheckBox("Export redacted files (with report and verification)")
+        self.export.setChecked(bool(settings.get("batch_export", False)))
+        f.addRow("", self.export)
+        lay.addLayout(f)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText("Start batch")
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    def _add(self):
+        from videoredact.core.media import MEDIA_FILTER
+        files, _ = QFileDialog.getOpenFileNames(self, "Add media files", self.settings.get("last_dir", ""), MEDIA_FILTER)
+        for p in files:
+            self.list.addItem(p)
+
+    def _add_folder(self):
+        from videoredact.core.media import VIDEO_EXTS, AUDIO_EXTS
+        d = QFileDialog.getExistingDirectory(self, "Add all media in folder", self.settings.get("last_dir", ""))
+        if d:
+            for p in sorted(Path(d).iterdir()):
+                if p.suffix.lower() in VIDEO_EXTS | AUDIO_EXTS:
+                    self.list.addItem(str(p))
+
+    def _pick_out(self):
+        d = QFileDialog.getExistingDirectory(self, "Output folder", self.out.text() or self.settings.get("last_dir", ""))
+        if d:
+            self.out.setText(d)
+
+    def files(self) -> list[str]:
+        return [self.list.item(i).text() for i in range(self.list.count())]
+
+    def labels(self) -> list[str]:
+        return [k for k, cb in self.checks.items() if cb.isChecked()]
+
+
 class NewBoxDialog(QDialog):
     """Asked after the user draws a box: what is it and what should we do?"""
 

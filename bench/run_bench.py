@@ -74,17 +74,19 @@ class StageTimer:
 
 
 class TimedDetector:
-    """Wraps CombinedDetector to accumulate inference time."""
+    """Wraps the detector pipeline (vision/detectors) to accumulate inference time."""
 
-    def __init__(self, inner: CombinedDetector, timer: StageTimer):
+    def __init__(self, inner, timer: StageTimer):
         self.inner, self.timer = inner, timer
         self.labels = inner.labels
 
-    def detect(self, frame):
+    def detect_one(self, frame):
         t0 = time.perf_counter()
-        out = self.inner.detect(frame)
+        out = self.inner.detect_one(frame) if hasattr(self.inner, "detect_one") else self.inner.detect(frame)
         self.timer.add("detect", time.perf_counter() - t0)
         return out
+
+    detect = detect_one
 
 
 def _patch_timing(timer: StageTimer):
@@ -248,8 +250,9 @@ def bench_clip(clip: Path, labels_dir: Path | None, classes: list[str], detect_l
     restore = _patch_timing(timer)
     try:
         # ---- auto-detect (single process, instrumented) ----
-        det = TimedDetector(CombinedDetector(detect_labels, face_conf=0.5, obj_conf=0.35, obj_model="yolox_tiny"), timer)
+        from videoredact.vision.auto_detect import build_detector
         opts = AutoDetectOptions(labels=detect_labels, stride=stride, workers=1)
+        det = TimedDetector(build_detector(opts), timer)
         t0 = time.perf_counter()
         with FrameReader(clip) as r:
             tracks = run_auto_detect(r, opts, detector=det)  # detector given -> single process

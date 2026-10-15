@@ -84,9 +84,25 @@ def vit_available() -> bool:
     return bool(_VIT_PATH)
 
 
+_POOL: dict[str, list] = {}
+
+
+def release_tracker(tracker, kind: str = "vit") -> None:
+    """Return a tracker to the pool so the next make_tracker() can re-init it
+    (TrackerVit_create costs ~20 ms because it loads the ONNX; init() on an
+    existing object is cheap). Pools are per process."""
+    if tracker is not None and kind == "vit":
+        pool = _POOL.setdefault(kind, [])
+        if len(pool) < 32:
+            pool.append(tracker)
+
+
 def make_tracker(kind: str = "vit"):
-    """Create an OpenCV tracker: vit (default) | kcf | csrt. Falls back to KCF."""
+    """Create (or reuse) an OpenCV tracker: vit (default) | kcf | csrt. Falls back to KCF."""
     if kind == "vit" and vit_available():
+        pool = _POOL.get("vit")
+        if pool:
+            return pool.pop()
         p = cv2.TrackerVit_Params()
         p.net = _VIT_PATH
         return cv2.TrackerVit_create(p)

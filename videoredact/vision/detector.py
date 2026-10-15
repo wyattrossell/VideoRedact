@@ -167,12 +167,12 @@ class ObjectDetector:
         # None -> COCO mapping in COCO_TO_LABEL
         self.class_names = class_names
         path = model_registry.ensure_model(model)
-        # Thread budget + no spin-waiting: with spinning on, a resident session slowed
-        # KCF 2.5x and YOLOX itself 5x (measured). Provider tier comes from vision/accel.py.
-        self.sess = _ort_session(str(path), threads)
-        inp = self.sess.get_inputs()[0]
-        self.input_name = inp.name
-        shp = inp.shape
+        # Engine from vision/runner.py: OpenVINO on an Intel GPU when available, else ONNX
+        # Runtime (CUDA/TensorRT pack or CPU). Thread budget + no spin-waiting on CPU.
+        from .runner import make_runner
+        self.runner = make_runner(path, threads)
+        self.engine = self.runner.engine
+        shp = self.runner.input_shape
         self.size = int(shp[2]) if isinstance(shp[2], int) else (416 if "tiny" in model else 640)
         self.conf_thr = conf_thr
         self.nms_thr = nms_thr
@@ -203,7 +203,7 @@ class ObjectDetector:
     def detect(self, frame: np.ndarray) -> list[Detection]:
         H, W = frame.shape[:2]
         blob, r = self._preprocess(frame)
-        out = self.sess.run(None, {self.input_name: blob})[0][0]  # [N, 85]
+        out = self.runner.run(blob)[0][0]  # [N, 85]
         xy = (out[:, :2] + self._grids) * self._strides
         wh = np.exp(out[:, 2:4]) * self._strides
         obj = out[:, 4:5]

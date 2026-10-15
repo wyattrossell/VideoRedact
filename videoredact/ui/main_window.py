@@ -21,7 +21,7 @@ from videoredact.core.media import MEDIA_FILTER, FrameReader, decode_audio, prob
 from videoredact.core.model import (AudioRedaction, AudioStyle, BBox, Project, Shape, Span, VideoStyle, VideoTrack,
                                     Word, as_enum)
 from videoredact.paths import settings
-from .dialogs import AutoDetectDialog, ExportDialog, NewBoxDialog, SettingsDialog
+from .dialogs import AutoDetectDialog, BatchDialog, ExportDialog, NewBoxDialog, SettingsDialog
 from .panels import AUDIO_STYLE_NAMES, VIDEO_STYLE_NAMES, PIIDialog, RedactionPanel
 from .player import MediaPlayer
 from .timeline import Timeline
@@ -142,10 +142,12 @@ class MainWindow(QMainWindow):
         self.a_save = act("&Save project", self.save_project, "Ctrl+S", QStyle.SP_DialogSaveButton)
         self.a_save_as = act("Save project &as…", self.save_project_as, "Ctrl+Shift+S")
         self.a_export = act("&Export redacted media…", self.export_media, "Ctrl+E", QStyle.SP_DialogApplyButton)
+        self.a_batch = act("&Batch process files…", self.batch_process, "Ctrl+B")
         for a in (self.a_open, self.a_open_proj, self.a_save, self.a_save_as):
             m.addAction(a)
         m.addSeparator()
         m.addAction(self.a_export)
+        m.addAction(self.a_batch)
         m.addSeparator()
         m.addAction(act("E&xit", self.close, "Ctrl+Q"))
 
@@ -928,6 +930,51 @@ class MainWindow(QMainWindow):
                 self.seek(vr.uncovered[0].time)
 
         self.jobs.run("Exporting redacted media", job, done, on_cancel=on_cancel)
+
+    # --------------------------------------------------------------- batch
+    def batch_process(self) -> None:
+        dlg = BatchDialog(settings, self)
+        if dlg.exec() != QDialog.Accepted or not dlg.files():
+            return
+        from videoredact.core.batch import BatchOptions, run_batch
+        settings["batch_out_dir"] = dlg.out.text().strip()
+        settings["batch_export"] = dlg.export.isChecked()
+        settings.save()
+        opts = BatchOptions(files=dlg.files(), out_dir=dlg.out.text().strip() or None, detect_labels=dlg.labels(),
+                            stride=int(settings.get("detect_stride", 5)), export=dlg.export.isChecked(),
+                            verify=bool(settings.get("verify_export", True)), author=settings.get("author", ""),
+                            default_video_style=settings.get("default_video_style", "black"),
+                            default_audio_style=settings.get("default_audio_style", "beep"),
+                            crf=int(settings.get("export_crf", 23)), preset=settings.get("export_preset", "veryfast"),
+                            detect_kwargs=dict(face_conf=settings["face_conf"], obj_conf=settings["detect_conf"],
+                                               obj_model=settings.get("detector_model", "yolox_tiny"),
+                                               face_model=settings.get("face_detector", "yunet"),
+                                               carry=bool(settings.get("detect_carry", True)),
+                                               tiles=bool(settings.get("detect_tiles", False)),
+                                               multiscale=bool(settings.get("detect_multiscale", True)),
+                                               head_fallback=bool(settings.get("detect_head", True)),
+                                               face_pad=float(settings.get("face_pad", 0.25)),
+                                               assoc=settings.get("assoc", "botsort"),
+                                               lead_in=int(settings.get("lead_frames", 15)),
+                                               lead_out=int(settings.get("lead_frames", 15))))
+
+        def job(prog, cancel, partial):
+            return run_batch(opts, prog, cancel)
+
+        def done(results):
+            if results is None:
+                return
+            ok = [r for r in results if r.ok]
+            bad = [r for r in results if not r.ok]
+            lines = [f"{len(ok)} of {len(results)} file(s) processed."]
+            for r in ok[:15]:
+                lines.append(f"  {Path(r.file).name}: {r.tracks} tracks, {r.seconds:.0f} s"
+                             + (f", {r.uncovered} uncovered in verification" if r.uncovered is not None else ""))
+            for r in bad[:5]:
+                lines.append(f"  FAILED {Path(r.file).name}: {r.error.splitlines()[0][:120]}")
+            QMessageBox.information(self, "Batch complete", "\n".join(lines))
+
+        self.jobs.run(f"Batch: {len(opts.files)} file(s)", job, done)
 
     # ---------------------------------------------------------------- misc
     def open_settings(self) -> None:

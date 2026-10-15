@@ -43,10 +43,13 @@ log = logging.getLogger(__name__)
 
 DETECT_MAX_SIDE = 960
 CARRY_WORK_SIDE = 512
+SCENE_CUT_THR = 0.55       # histogram distance (Bhattacharyya, HSV) between consecutive detection frames
+STATIC_THR = 0.02          # below this distance the scene is static enough to stretch the stride
 CARRY_MIN_SCORE = 0.35
 CARRY_HIST_THR = 0.65
-CARRY_MAX_S = 3.0          # give up carrying after this long without a detection
-CARRY_STEP = 2             # update carriers every N-th frame (boxes interpolate in between)
+CARRY_MAX_S = 2.0          # give up carrying after this long without a detection
+CARRY_STEP = 3             # update carriers every N-th frame (boxes interpolate in between)
+CARRY_MAX_ACTIVE = 8       # cap on concurrent carriers (newest tracks first); beyond this, interpolation only
 CARRY_TRACKER = "vit"      # vit: 5 ms per face, scale-adaptive (90% coverage); kcf: 2 ms but drifts (84%)
 CARRY_MIN_HITS = 2         # only carry tracks confirmed by >= 2 detections (avoids carrying false positives)
 SINGLE_MIN_CONF = 0.0      # keep every single detection (recall first; the reviewer can delete)
@@ -79,6 +82,10 @@ class AutoDetectOptions:
     face_pad: float = 0.25     # dilation of face/head boxes (fraction of box size)
     face_shape: str = "ellipse"
     detector_cfg: Optional[dict] = None   # override for detectors.build()
+    proxy_width: int = 1280    # decode a proxy this wide for detection when the source is larger (boxes are normalized)
+    scene_cut: bool = True     # detect every frame right after a hard cut and reset carriers/tracker state
+    adaptive: bool = True      # skip detection on frames nearly identical to the last detected one (static camera)
+    max_stride: int = 15       # cap for adaptive skipping (frames)
 
 
 # ----------------------------------------------------------------------------
@@ -155,6 +162,7 @@ class _Carrier:
     def __init__(self, work_frames: list[np.ndarray], box: BBox, W: int, H: int, kind: str = CARRY_TRACKER):
         from .tracker import make_tracker, tracker_score, vit_available
         self.W, self.H = W, H
+        self.kind = kind
         self.tracker = make_tracker(kind)
         self.is_vit = kind == "vit" and vit_available()
         self._score = tracker_score
@@ -164,6 +172,11 @@ class _Carrier:
         self.box: Optional[BBox] = box
         for f in work_frames[1:]:
             self.update(f)
+
+    def release(self) -> None:
+        from .tracker import release_tracker
+        release_tracker(self.tracker, self.kind)
+        self.tracker = None
 
     def update(self, work: np.ndarray) -> Optional[BBox]:
         ok, b = self.tracker.update(work)
@@ -205,6 +218,18 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
     fps = reader.fps or 30.0
     carry_max_frames = int(CARRY_MAX_S * fps)
 
+    def _frame_sig(f):
+        small = cv2.resize(f, (160, 90), interpolation=cv2.INTER_AREA)
+        hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+        h = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+        cv2.normalize(h, h, 0, 1, cv2.NORM_MINMAX)
+        return h
+
+    last_sig = None
+    cur_stride = stride
+    next_det = start
+    n_cuts = n_skipped = 0
+
     def close(L: _Live):
         if L.hits == 1 and L.fallback_hits == 1:
             return   # a lone head-fallback box (person seen once, no face) is too noisy to keep
@@ -221,23 +246,48 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
             mot = None
     by_tid: dict[int, _Live] = {}
 
-    reader.seek(start)
-    idx = start
+    from videoredact.core.streams import FrameProducer
+    from videoredact.core.media import local_path
+    producer = FrameProducer(local_path(reader.path), start, end, proxy_width=opts.proxy_width if W > opts.proxy_width else None)
     t_last = time.time()
-    while idx < end:
+    for idx, frame in producer:
         if cancel and cancel():
             break
-        frame = reader.read()
-        if frame is None:
-            break
-        is_det = (idx - start) % stride == 0
+        if opts.scene_cut or opts.adaptive:
+            is_det = idx >= next_det
+            if not is_det and opts.scene_cut and (idx - start) % max(2, stride // 2) == 0:
+                sig = _frame_sig(frame)
+                if last_sig is not None and cv2.compareHist(last_sig, sig, cv2.HISTCMP_BHATTACHARYYA) > SCENE_CUT_THR:
+                    is_det = True          # hard cut: detect now, forget carriers
+                    n_cuts += 1
+                    for L in live:
+                        L.carrier = None
+                    if mot is not None:
+                        try:
+                            from .mot import MOT
+                            mot = MOT(opts.assoc, fps=fps, stride=stride, lost_buffer_steps=opts.max_missed)
+                        except Exception:  # noqa: BLE001
+                            pass
+        else:
+            is_det = (idx - start) % stride == 0
         carrying = opts.carry and any(L.carrier is not None for L in live)
         work_c = None
         if opts.carry:
             ring.append((idx, frame))
         if is_det:
-            # full-resolution frame: the face detector downsizes to <=1280 itself (small faces
-            # need the pixels; a 960 px copy lost ~7 % of faces), YOLOX resizes to 416 anyway
+            if opts.scene_cut or opts.adaptive:
+                sig = _frame_sig(frame)
+                if opts.adaptive and last_sig is not None and live and not carrying:
+                    d = cv2.compareHist(last_sig, sig, cv2.HISTCMP_BHATTACHARYYA)
+                    cur_stride = min(opts.max_stride, cur_stride + stride) if d < STATIC_THR else stride
+                    if cur_stride > stride:
+                        n_skipped += cur_stride - stride
+                else:
+                    cur_stride = stride
+                last_sig = sig
+                next_det = idx + cur_stride
+            # full-resolution (or proxy) frame: the face detector downsizes to <=1280 itself (small
+            # faces need the pixels; a 960 px copy lost ~7 % of faces), YOLOX resizes to 416 anyway
             dets = _run_detector(det, frame)
             if mot is not None:
                 # BoT-SORT gives identities (Kalman prediction + camera-motion compensation);
@@ -267,6 +317,8 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
                     L.fallback_hits += int(d.source == "head-fallback")
                     L.missed = 0
                     L.score_sum += d.score
+                    if L.carrier is not None:
+                        L.carrier.release()
                     L.carrier = None
                     L.carry_frames = 0
                 rest_live = [i for i, L in enumerate(live) if L.tid not in seen]
@@ -286,12 +338,15 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
                 L.fallback_hits += int(getattr(d, "source", "") == "head-fallback")
                 L.missed = 0
                 L.score_sum += d.score
+                if L.carrier is not None:
+                    L.carrier.release()
                 L.carrier = None
                 L.carry_frames = 0
             for i in un_live:
                 L = live[i]
                 L.missed += 1
-                if opts.carry and L.carrier is None and L.missed == 1 and L.hits >= CARRY_MIN_HITS and ring:
+                if (opts.carry and L.carrier is None and L.missed == 1 and L.hits >= CARRY_MIN_HITS and ring
+                        and sum(1 for x in live if x.carrier is not None) < CARRY_MAX_ACTIVE):
                     frames = [to_work(f) for k, f in ring if k >= L.last_frame and (k - L.last_frame) % CARRY_STEP == 0]
                     if frames:
                         try:
@@ -325,12 +380,15 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
                     b = L.carrier.update(work_c)
                     L.carry_frames += 1
                     if b is None or L.carry_frames > carry_max_frames:
+                        L.carrier.release()
                         L.carrier = None
                         continue
                     L.span.keyframes[idx] = b
                     L.span.end_frame = idx
                     L.last_box = b
-        idx += 1
+    producer.close()
+    if n_cuts or n_skipped:
+        log.info("auto-detect: %d scene cuts, %d frames skipped adaptively", n_cuts, n_skipped)
     for L in live:
         close(L)
     tracks: list[VideoTrack] = []
@@ -454,6 +512,8 @@ def run_auto_detect(reader: FrameReader, opts: AutoDetectOptions,
     start = opts.start_frame
     end = opts.end_frame if opts.end_frame is not None else reader.frame_count
     n = end - start
+    from videoredact.core.media import local_path
+    src_path = local_path(reader.path, progress)
     workers = opts.workers or max(1, min(4, (os.cpu_count() or 4) // 2))
     if detector is not None or workers <= 1 or n < 1500:
         det = detector or build_detector(opts)
@@ -481,7 +541,7 @@ def run_auto_detect(reader: FrameReader, opts: AutoDetectOptions,
     cv_threads = max(2, cpu // workers)
     procs = []
     for wid, (a, b) in enumerate(bounds):
-        p = ctx.Process(target=_worker, args=(reader.path, dict(opts_d, cv_threads=cv_threads), a, b, q, cancel_ev, wid), daemon=True)
+        p = ctx.Process(target=_worker, args=(src_path, dict(opts_d, cv_threads=cv_threads), a, b, q, cancel_ev, wid), daemon=True)
         p.start()
         procs.append(p)
     results: dict[int, list[VideoTrack]] = {}

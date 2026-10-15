@@ -21,8 +21,9 @@ from typing import Callable, Optional
 import numpy as np
 
 from . import audio_redact, video_redact
-from .media import FrameReader, decode_audio, ffmpeg_exe, probe, sha256_file, write_wav
+from .media import FrameReader, decode_audio, ffmpeg_exe, local_path, probe, sha256_file, write_wav
 from .model import Project
+from .streams import FFmpegWriter, FrameProducer
 
 ProgressCB = Callable[[float, str], None]
 CancelCB = Callable[[], bool]
@@ -42,10 +43,107 @@ class ExportOptions:
     verify_labels: Optional[list] = None   # e.g. ["face"]: re-detect in the output and report uncovered hits
     start_s: float = 0.0                   # clip range (seconds); end_s None = to the end
     end_s: Optional[float] = None
+    workers: int = 0                       # video encode workers: 0 = auto (parallel segments on long clips), 1 = single process
 
 
 class ExportCancelled(Exception):
     pass
+
+
+MIN_FRAMES_PER_WORKER = 300
+
+
+def _encode_segment(src: str, out_seg: str, f_start: int, f_end: int, fps: float, W: int, H: int,
+                    tracks_d: list, style: str, crf: int, preset: str, q, wid: int) -> None:
+    """Worker process: redact + encode frames [f_start, f_end) to a video-only segment."""
+    try:
+        import cv2
+        cv2.setNumThreads(2)
+        from .model import VideoStyle, VideoTrack
+        from .streams import FFmpegWriter, FrameProducer
+        tracks = [VideoTrack.from_dict(d) for d in tracks_d]
+        vstyle = VideoStyle(style)
+        cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y",
+               "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{W}x{H}", "-r", f"{fps:.6f}", "-i", "pipe:0",
+               "-an", "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p",
+               "-threads", "4", "-x264-params", "open-gop=0", out_seg]
+        writer = FFmpegWriter(cmd)
+        n = max(1, f_end - f_start)
+        k = 0
+        with FrameProducer(src, f_start, f_end) as producer:
+            for idx, frame in producer:
+                if tracks:
+                    video_redact.redact_frame(frame, tracks, idx, vstyle)
+                writer.put(frame)
+                k += 1
+                if k % 30 == 0:
+                    q.put(("progress", wid, k / n))
+        writer.close()
+        q.put(("done", wid, k))
+    except Exception as e:  # noqa: BLE001
+        import traceback
+        q.put(("error", wid, f"{e}\n{traceback.format_exc()[-600:]}"))
+
+
+def _export_video_parallel(src: str, out_path: Path, f_start: int, f_last: int, fps: float, W: int, H: int,
+                           project: Project, opts: ExportOptions, wav_path: Optional[Path], has_audio: bool,
+                           workers: int, prog, cancel, tmpdir: Path) -> None:
+    import multiprocessing as mp
+    tracks_d = [t.to_dict() for t in project.video_tracks if t.enabled]
+    n = f_last - f_start
+    size = n // workers
+    bounds = [(f_start + w * size, f_last if w == workers - 1 else f_start + (w + 1) * size) for w in range(workers)]
+    ctx = mp.get_context("spawn")
+    q = ctx.Queue()
+    segs = [str(tmpdir / f"seg{w:02d}.mp4") for w in range(workers)]
+    procs = []
+    for w, (a, b) in enumerate(bounds):
+        p = ctx.Process(target=_encode_segment, args=(src, segs[w], a, b, fps, W, H, tracks_d,
+                                                       project.default_video_style.value, opts.crf, opts.preset, q, w), daemon=True)
+        p.start()
+        procs.append(p)
+    done = 0
+    progs = [0.0] * workers
+    try:
+        while done < workers:
+            if cancel and cancel():
+                raise ExportCancelled()
+            try:
+                kind, wid, val = q.get(timeout=0.25)
+            except Exception:
+                if all(not p.is_alive() for p in procs) and done < workers:
+                    raise RuntimeError("an export worker exited unexpectedly")
+                continue
+            if kind == "progress":
+                progs[wid] = val
+                prog(0.06 + 0.88 * sum(progs) / workers, f"Encoding ({workers} workers) {int(100 * sum(progs) / workers)}%")
+            elif kind == "done":
+                progs[wid] = 1.0
+                done += 1
+            else:
+                raise RuntimeError(f"export worker {wid} failed: {val}")
+    finally:
+        for p in procs:
+            p.join(timeout=5)
+            if p.is_alive():
+                p.terminate()
+    # concat the segments (stream copy) and mux the redacted audio
+    lst = tmpdir / "segments.txt"
+    lst.write_text("".join(f"file '{Path(s).as_posix()}'\n" for s in segs), encoding="utf-8")
+    cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst)]
+    if has_audio and wav_path is not None:
+        cmd += ["-i", str(wav_path), "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", opts.audio_bitrate, "-shortest"]
+    else:
+        cmd += ["-map", "0:v:0"]
+    cmd += ["-c:v", "copy", "-movflags", "+faststart", str(out_path)]
+    res = subprocess.run(cmd, capture_output=True, creationflags=_CREATE_NO_WINDOW)
+    if res.returncode != 0:
+        raise RuntimeError("FFmpeg concat failed: " + res.stderr.decode("utf-8", "replace")[-1200:])
+    for s_ in segs:
+        try:
+            os.remove(s_)
+        except OSError:
+            pass
 
 
 def _report_paths(out: Path) -> tuple[Path, Path, Path]:
@@ -67,8 +165,9 @@ def export_project(project: Project, opts: ExportOptions,
         if cancel and cancel():
             raise ExportCancelled()
 
-    src = project.media.path
-    info = project.media if project.media.frame_count or project.media.has_audio else probe(src)
+    src_orig = project.media.path
+    info = project.media if project.media.frame_count or project.media.has_audio else probe(src_orig)
+    src = local_path(src_orig, progress)      # network-share sources decode ~40 % faster from local disk
     out_path = Path(opts.output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
@@ -114,6 +213,18 @@ def export_project(project: Project, opts: ExportOptions,
                 total_all = reader.frame_count or info.frame_count or 1
                 f_last = min(f_end, total_all) if f_end is not None else total_all
                 total = max(1, f_last - f_start)
+                # Segment-parallel encoding is opt-in (opts.workers > 1): on a 20-core box two
+                # concurrent exports reached only 1.2x the throughput of one, i.e. libx264 already
+                # uses the machine; the default stays single-process with threaded decode/encode.
+                workers = opts.workers if opts.workers and opts.workers > 1 else 1
+                workers = min(workers, max(1, total // MIN_FRAMES_PER_WORKER))
+            if workers > 1:
+                _export_video_parallel(src, out_path, f_start, f_last, fps, W, H, project, opts,
+                                       wav_path if has_audio else None, has_audio, workers, prog, cancel, tmpdir)
+                result["encode_workers"] = workers
+            else:
+              with FrameReader(src) as reader:
+                result["encode_workers"] = 1
                 cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y",
                        "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{W}x{H}", "-r", f"{fps:.6f}",
                        "-i", "pipe:0"]
@@ -129,32 +240,34 @@ def export_project(project: Project, opts: ExportOptions,
                 if has_audio:
                     cmd += ["-shortest"]
                 cmd += [str(out_path)]
-                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
-                                        creationflags=_CREATE_NO_WINDOW)
+                # Pipelined: a decode thread fills a queue, this thread redacts, an encode
+                # thread streams to FFmpeg. Decode/encode overlap instead of running serially.
+                writer = FFmpegWriter(cmd)
                 tracks = [t for t in project.video_tracks if t.enabled]
                 last_prog = 0.0
+                producer = FrameProducer(src, f_start, f_last, proxy_width=None)
                 try:
-                    for idx, frame in reader.iter_frames(f_start, f_last):
+                    for idx, frame in producer:
                         if tracks:
                             video_redact.redact_frame(frame, tracks, idx, project.default_video_style)
-                        proc.stdin.write(frame.tobytes())
+                        writer.put(frame)
                         if idx % 15 == 0:
                             p = 0.06 + 0.90 * min(1.0, (idx - f_start) / total)
                             if p - last_prog > 0.002:
                                 prog(p, f"Encoding frame {idx}/{total}")
                                 last_prog = p
                             if cancel and cancel():
-                                proc.kill()
+                                producer.close()
+                                writer.abort()
                                 raise ExportCancelled()
-                finally:
-                    try:
-                        proc.stdin.close()
-                    except Exception:
-                        pass
-                err = proc.stderr.read().decode("utf-8", "replace")
-                rc = proc.wait()
-                if rc != 0:
-                    raise RuntimeError(f"FFmpeg encode failed (code {rc}): {err[-1500:]}")
+                except ExportCancelled:
+                    raise
+                except Exception:
+                    producer.close()
+                    writer.abort()
+                    raise
+                producer.close()
+                writer.close()
         else:
             # audio only
             prog(0.5, "Encoding audio")
@@ -171,7 +284,7 @@ def export_project(project: Project, opts: ExportOptions,
         result["output_sha256"] = sha256_file(out_path)
         if not project.media.sha256:
             prog(0.98, "Hashing source")
-            project.media.sha256 = sha256_file(src)
+            project.media.sha256 = sha256_file(src_orig)
         result["source_sha256"] = project.media.sha256
         result["elapsed_s"] = time.time() - t0
         project.log("export", f"{out_path.name} sha256={result['output_sha256'][:16]}... in {result['elapsed_s']:.0f}s")

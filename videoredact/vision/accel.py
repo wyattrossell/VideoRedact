@@ -141,9 +141,14 @@ def _choose_tier(hw: HardwareInfo) -> tuple[str, str]:
             return "nvidia", "CUDAExecutionProvider"
         hw.notes.append("NVIDIA GPU present but onnxruntime-gpu is not installed; using CPU")
     if hw.intel_gpu or hw.intel_npu:
-        if "OpenVINOExecutionProvider" in p:
-            return "intel", "OpenVINOExecutionProvider"
-        hw.notes.append("Intel GPU/NPU present but onnxruntime-openvino is not installed; using CPU")
+        try:
+            from .runner import openvino_device
+            dev = openvino_device()
+        except Exception:  # noqa: BLE001
+            dev = None
+        if dev:
+            return "intel", f"openvino:{dev}"
+        hw.notes.append("Intel GPU/NPU present but the `openvino` package is not installed; using CPU")
     if sys.platform == "win32" and hw.gpus and "DmlExecutionProvider" in p:
         return "directml", "DmlExecutionProvider"
     return "cpu", "CPUExecutionProvider"
@@ -159,8 +164,7 @@ def preferred_providers() -> list:
             chain.append(("TensorrtExecutionProvider", {"trt_fp16_enable": True}))
         chain.append("CUDAExecutionProvider")
     elif hw.tier == "intel":
-        dev = "NPU" if hw.intel_npu else "GPU"
-        chain.append(("OpenVINOExecutionProvider", {"device_type": dev, "precision": "FP16"}))
+        pass   # the OpenVINO Python API runner handles this tier (vision/runner.py); ORT stays CPU
     elif hw.tier == "directml":
         chain.append("DmlExecutionProvider")
     chain.append("CPUExecutionProvider")

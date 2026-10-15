@@ -19,6 +19,14 @@ docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
 - [ ] Open-vocabulary detector: evaluated (Grounding DINO 9 s/frame on CPU) and parked; use fine-tuned classes instead.
 - [ ] SAM-based masks: parked pending GPU availability and licence review.
 
+## Done in Phase 3 (speed, 2026-10-15) - see docs/PHASE3_NOTES.md
+- [x] Decode/encode threads with bounded queues (`core/streams.py`); FFmpeg proxy pipe with QuickSync for >1280 px sources.
+- [x] Inference runner with OpenVINO on Intel iGPU/NPU (disk-cached engines) and ONNX Runtime fallback; YuNet moved off OpenCV DNN.
+- [x] Scene-cut detection + adaptive stride (coverage-gated), cheaper carry-tracking, tracker pool, C++ mask compositing.
+- [x] Network-share sources staged to local disk; batch queue (File > Batch process).
+- [ ] CUDA/TensorRT tier: detected, wired, no working pip runtime on the dev laptop; fleet has no NVIDIA.
+- [ ] Batched iGPU inference and INT8 (needs the labelled set to confirm recall).
+
 ## Top 10 next, drawn from the commercial / legal / technical research
 1. **Review queue** for auto-detections: list every track with a thumbnail, jump-to, approve/delete, "mark all reviewed", keyboard F / Shift+F to step through (Axon/Motorola pattern). Biggest reviewer time saver. (M)
 2. **Exemption code + reason per redaction**, state pick-lists, exemption log in the PDF/CSV (FOIA 552(b), RCW 42.56.210). (S)

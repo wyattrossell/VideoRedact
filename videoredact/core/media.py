@@ -62,6 +62,80 @@ def run_ffmpeg(args: list[str], **kw) -> subprocess.CompletedProcess:
                           creationflags=_CREATE_NO_WINDOW, **kw)
 
 
+STAGE_MAX_BYTES = 6 * 1024 ** 3
+
+
+def is_network_path(path: str | Path) -> bool:
+    p = str(path)
+    if p.startswith("\\\\") or p.startswith("//"):
+        return True
+    try:
+        import ctypes
+        drive = os.path.splitdrive(os.path.abspath(p))[0]
+        if drive and sys.platform == "win32":
+            return ctypes.windll.kernel32.GetDriveTypeW(drive + "\\") == 4   # DRIVE_REMOTE
+    except Exception:
+        pass
+    return False
+
+
+def local_path(path: str | Path, progress: Optional[Callable[[float, str], None]] = None) -> str:
+    """Return a local copy of `path` when it lives on a network share (redirected
+    Desktops, file servers): sequential decoding from SMB measured 40 % slower than
+    from local disk, and parallel workers re-read the same remote file. The copy is
+    cached in %TEMP%/videoredact_stage keyed by name/size/mtime; files over
+    STAGE_MAX_BYTES are used in place. Set VIDEOREDACT_NO_STAGING=1 to disable."""
+    p = Path(path)
+    if os.environ.get("VIDEOREDACT_NO_STAGING") or not is_network_path(p):
+        return str(p)
+    try:
+        st = p.stat()
+    except OSError:
+        return str(p)
+    if st.st_size > STAGE_MAX_BYTES:
+        return str(p)
+    import shutil
+    import tempfile
+    stage = Path(tempfile.gettempdir()) / "videoredact_stage"
+    stage.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha1(f"{p.resolve()}|{st.st_size}|{int(st.st_mtime)}".encode("utf-8", "replace")).hexdigest()[:16]
+    dst = stage / f"{key}{p.suffix.lower()}"
+    if dst.exists() and dst.stat().st_size == st.st_size:
+        return str(dst)
+    tmp = dst.with_suffix(dst.suffix + ".part")
+    try:
+        if progress:
+            progress(0.0, f"Copying {p.name} to local disk…")
+        with open(p, "rb") as fi, open(tmp, "wb") as fo:
+            done = 0
+            while True:
+                chunk = fi.read(16 * 1024 * 1024)
+                if not chunk:
+                    break
+                fo.write(chunk)
+                done += len(chunk)
+                if progress:
+                    progress(done / max(1, st.st_size), f"Copying {p.name} to local disk… {done // 1_000_000} / {st.st_size // 1_000_000} MB")
+        tmp.replace(dst)
+        # keep the stage folder bounded (~20 GB): drop oldest copies
+        files = sorted(stage.glob("*"), key=lambda f: f.stat().st_mtime)
+        total = sum(f.stat().st_size for f in files)
+        while total > 20 * 1024 ** 3 and len(files) > 1:
+            f = files.pop(0)
+            total -= f.stat().st_size
+            try:
+                f.unlink()
+            except OSError:
+                pass
+        return str(dst)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return str(p)
+
+
 def sha256_file(path: str | Path, progress: Optional[Callable[[float], None]] = None) -> str:
     h = hashlib.sha256()
     p = Path(path)

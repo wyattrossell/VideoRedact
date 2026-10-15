@@ -60,16 +60,24 @@ class MultiScaleDetector(Detector):
     """Run the inner detector at several input scales (upscaling helps tiny faces,
     downscaling helps very large ones) and fuse."""
 
-    def __init__(self, inner: Detector, scales: Sequence[float] = (1.0, 1.5), iou_thr: float = 0.5):
+    def __init__(self, inner: Detector, scales: Sequence[float] = (1.0, 1.5), iou_thr: float = 0.5, extra_every: int = 1):
+        # extra_every: run the non-1.0 scales only on every k-th call (distant faces move slowly;
+        # the tracker/carry bridges the steps in between) - halves the multi-scale cost at k=2.
         self.inner, self.scales, self.iou_thr = inner, tuple(scales), iou_thr
+        self.extra_every = max(1, extra_every)
+        self._calls = 0
         self.labels = set(inner.labels)
         self.name = f"multiscale({inner.name},{','.join(str(s) for s in scales)})"
 
     def detect(self, frames: Sequence[np.ndarray]) -> list[list[Detection]]:
         out = []
         for f in frames:
+            self._calls += 1
+            run_extra = (self._calls % self.extra_every) == 0
             dets: list[Detection] = []
             for s in self.scales:
+                if abs(s - 1.0) > 1e-6 and not run_extra:
+                    continue
                 img = f if abs(s - 1.0) < 1e-6 else cv2.resize(f, None, fx=s, fy=s, interpolation=cv2.INTER_LINEAR if s > 1 else cv2.INTER_AREA)
                 dets += self.inner.detect([img])[0]      # boxes are normalized: scale-invariant
             out.append(nms_merge(dets, self.iou_thr))

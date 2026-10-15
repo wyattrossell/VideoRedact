@@ -104,9 +104,10 @@ def selftest(media: str | None = None) -> int:
         if not reg.is_available("yunet"):
             return "skipped (model not downloaded)"
         import numpy as np
-        from videoredact.vision.detector import FaceDetector
-        FaceDetector().detect(np.zeros((360, 640, 3), dtype=np.uint8))
-        return "YuNet runs"
+        from videoredact.vision.detectors import build_face
+        d = build_face("yunet")
+        d.detect([np.zeros((720, 1280, 3), dtype=np.uint8)])
+        return f"YuNet runs on {getattr(d, 'engine', '?')}"
     step("face detector", _face)
 
     def _yolox():
@@ -116,8 +117,9 @@ def selftest(media: str | None = None) -> int:
         import numpy as np
         from videoredact.vision.detector import ObjectDetector
         name = "yolox_tiny" if reg.is_available("yolox_tiny") else "yolox_s"
-        ObjectDetector(name).detect(np.zeros((360, 640, 3), dtype=np.uint8))
-        return f"{name} runs"
+        od = ObjectDetector(name)
+        od.detect(np.zeros((360, 640, 3), dtype=np.uint8))
+        return f"{name} runs on {getattr(od, 'engine', '?')}"
     step("object detector", _yolox)
 
     if media:

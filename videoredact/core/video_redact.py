@@ -54,7 +54,7 @@ def apply_box(frame: np.ndarray, bbox: BBox, style: VideoStyle, shape: Shape = S
     if shape == Shape.ELLIPSE:
         mask = np.zeros(roi.shape[:2], dtype=np.uint8)
         cv2.ellipse(mask, ((x1 - x0) // 2, (y1 - y0) // 2), ((x1 - x0) // 2, (y1 - y0) // 2), 0, 0, 360, 255, -1)
-        roi[mask > 0] = styled[mask > 0]
+        cv2.copyTo(styled, mask, roi)          # masked copy in C++ (numpy boolean indexing cost ~10x more)
     elif shape == Shape.ROUNDED:
         h, w = roi.shape[:2]
         r = max(2, int(min(w, h) * 0.25))
@@ -63,7 +63,7 @@ def apply_box(frame: np.ndarray, bbox: BBox, style: VideoStyle, shape: Shape = S
         cv2.rectangle(mask, (0, r), (w, h - r), 255, -1)
         for cx, cy in ((r, r), (w - r, r), (r, h - r), (w - r, h - r)):
             cv2.circle(mask, (cx, cy), r, 255, -1)
-        roi[mask > 0] = styled[mask > 0]
+        cv2.copyTo(styled, mask, roi)
     else:
         frame[y0:y1, x0:x1] = styled
 

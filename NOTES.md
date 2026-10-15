@@ -225,6 +225,21 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-15 (Phase 3, speed): measured decode paths (OpenCV fastest at full
+  res; FFmpeg proxy pipes ~500 fps with QuickSync for >1280 px sources),
+  inference engines (OpenVINO on the Intel UHD 770 iGPU: YOLOX-tiny 11 ms,
+  YuNet 8 ms; ORT CUDA/TensorRT and the ORT OpenVINO EP could not be loaded
+  from pip on this machine). Built: core/streams.py (decode/encode threads),
+  vision/runner.py (OpenVINO API runner with disk cache + ORT fallback), YuNet
+  on ORT/OpenVINO with raw NHWC u8 input (11 ms end to end vs 30 via OpenCV
+  DNN, identical boxes), tracker pool (ViT create was 20 ms x 249/clip),
+  cv2.copyTo mask compositing, scene-cut + adaptive stride (coverage gate
+  100 %), cheaper carrying, network-share staging to local disk (+40 % export),
+  batch queue (File > Batch), segment-parallel export (opt-in; no gain here:
+  two concurrent exports = 1.2x). Results table in docs/PHASE3_NOTES.md.
+  Gotcha: `trackers` pulls plain opencv-python (shadows contrib);
+  `openvino` must be installed in the app venv for the Intel tier.
+
 - 2026-10-14 (late): v0.1.8 built (bundle now staged on local disk: PyInstaller's
   COLLECT failed creating dirs on the UNC share; installer/build.ps1 passes
   /DDistDir to Inno), published, installed per-user, self-test OK: frozen

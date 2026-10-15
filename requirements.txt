@@ -9,4 +9,5 @@ soundfile>=0.12
 scipy>=1.11
 reportlab>=4.0
 trackers>=2.6
+openvino>=2026.0   # Intel iGPU/NPU tier via vision/runner.py (Apache-2.0)
 pytest>=8

@@ -8,7 +8,7 @@ ROOT = Path(SPECPATH).parent
 VERSION = re.search(r'__version__\s*=\s*"([^"]+)"', (ROOT / "videoredact" / "__init__.py").read_text()).group(1)
 
 datas, binaries, hiddenimports = [], [], []
-for pkg in ("onnxruntime", "ctranslate2", "faster_whisper", "soundfile", "tokenizers", "huggingface_hub"):
+for pkg in ("onnxruntime", "ctranslate2", "faster_whisper", "soundfile", "tokenizers", "huggingface_hub", "openvino", "trackers", "supervision"):
     try:
         d, b, h = collect_all(pkg)
     except Exception:

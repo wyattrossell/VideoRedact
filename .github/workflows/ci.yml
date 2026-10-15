@@ -1,0 +1,133 @@
+# Tests on every push / pull request; on each published release also the benchmark on the
+# bundled synthetic sample clip (tests/data/sample.mp4: OpenCV-drawn shapes + Windows TTS audio,
+# no real footage) with the results attached to the release.
+#
+# Department footage (bench/clips, bench/labels) is git-ignored and never reaches CI. The models
+# are downloaded here from their public upstream releases by scripts/fetch_models.py, which is
+# the one sanctioned downloader (the app itself runs offline).
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "*.md", "Published/**"]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to attach benchmark results to the release
+
+env:
+  PYTHONUTF8: "1"
+  QT_QPA_PLATFORM: offscreen
+  VIDEOREDACT_NO_OPENVINO: "1"   # GitHub runners have no Intel iGPU; keep the CPU tier deterministic
+
+jobs:
+  test:
+    name: Tests (Windows, Python ${{ matrix.python }})
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          # `trackers` pulls plain opencv-python, which shadows the contrib build: reinstall contrib last
+          python -m pip install --force-reinstall --no-deps "opencv-contrib-python>=4.10"
+
+      - name: Cache detection models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\VideoRedact\models
+          key: models-${{ hashFiles('videoredact/vision/models.py') }}
+
+      - name: Fetch detection models (public upstream releases)
+        shell: pwsh
+        run: python scripts/fetch_models.py
+
+      - name: Version copies in sync
+        shell: pwsh
+        run: python scripts/bump_version.py --check
+
+      - name: Unit tests
+        shell: pwsh
+        run: python -m pytest -q --junitxml=test-results.xml
+
+      - name: Offline self-test (sockets blocked)
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "."
+          python -m videoredact.app --selftest --offline-check --quiet tests/data/sample.mp4
+          if ($LASTEXITCODE -ne 0) { throw "offline self-test failed with exit $LASTEXITCODE" }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-py${{ matrix.python }}
+          path: test-results.xml
+
+  benchmark:
+    name: Benchmark on the public sample clip
+    needs: test
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install --force-reinstall --no-deps "opencv-contrib-python>=4.10"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\VideoRedact\models
+          key: models-${{ hashFiles('videoredact/vision/models.py') }}
+
+      - name: Fetch detection models
+        shell: pwsh
+        run: python scripts/fetch_models.py
+
+      - name: Run benchmark (synthetic sample only; no labels, so speed stages only)
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"
+          if (-not $tag) { $tag = "manual-" + (git rev-parse --short HEAD) }
+          echo "BENCH_TAG=$tag" >> $env:GITHUB_ENV
+          python bench/run_bench.py --clips tests/data --labels bench/labels --out "bench/results/ci_$tag.json" --no-parallel
+          if ($LASTEXITCODE -ne 0) { throw "benchmark failed with exit $LASTEXITCODE" }
+          python bench/ci_summary.py "bench/results/ci_$tag.json" "$tag (GitHub CPU runner, synthetic clip)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ env.BENCH_TAG }}
+          path: bench/results/ci_*.json
+
+      - name: Attach results to the release
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" (Get-ChildItem bench/results/ci_*.json).FullName --clobber

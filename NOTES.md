@@ -50,7 +50,8 @@ undo/redo, real-footage QA, installer build has not been run yet.
   Black box is the default. Since v0.1.10 pixelate has a 16 px block floor and
   "blur" is a heavy blur (area-average to ~6 samples); light Gaussian blur is gone
   because it is partially reversible (docs/CJIS_COMPLIANCE.md section 5).
-- **Offline by default** (v0.1.10): `settings.offline=True`, `check_updates=False`;
+- **Offline by default** (v0.1.10): `settings.offline=True`; `check_updates=True` since
+  v0.1.11 but notify-only (GitHub release metadata, link, never installs);
   `videoredact/offline.py` runs on package import and blocks `openvino_telemetry`
   (it posts to Google Analytics when no consent file exists). Every new dependency
   must pass `python -m videoredact.app --selftest --offline-check tests/data/sample.mp4`
@@ -231,6 +232,21 @@ samples/ (720p30 Axon clips), i7-14700T:
 | Export 640x360 (libx264 veryfast) | ~350 fps |
 
 ## Log
+
+- 2026-10-15 (later): Phase 5 (updates and release) + licensing audit. Updater is
+  notify-only (background check, 5 s timeout, silent offline, link to the release
+  page; download/launch code removed and a test forbids re-adding it); startup
+  check default ON again (user's Phase 5 ask; public metadata only; Settings >
+  Network turns it off). VERSION + CHANGELOG.md + `bump_version.py --check/--notes`
+  (build.ps1 promotes [Unreleased], publish_release.ps1 uses the section as notes).
+  .github/workflows/ci.yml: pytest + offline self-test on push/PR; benchmark on the
+  synthetic tests/data/sample.mp4 on each published release, results attached to
+  the release. docs/LICENSES.md (FFmpeg GPL build still to swap; Ultralytics AGPL,
+  InsightFace weights non-commercial, SAM licence summarised) + tests/test_licenses.py.
+  Benchmark rerun after Phase 4 (bench/results/phase4.json, COMPARISON.md): 83.8 fps
+  auto-detect vs 59.8 baseline, export 198 vs 202; the first run exposed a float32
+  JSON crash in the manifest writer (fixed). tests/test_tracks.py covers back-fill,
+  linking, mask dilation, audit log. Released as v0.1.11.
 
 - 2026-10-15: Phase 4 (evidence integrity). core/audit.py writes a self-hashed
   `<output>_audit.json` per export (operator, versions, model SHA-256s, thresholds,

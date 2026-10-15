@@ -22,7 +22,9 @@ $asset = "$repo\Published\VideoRedact-$Version-Setup.exe"
 if (-not (Test-Path $asset)) { throw "Installer not found: $asset  (run installer\build.ps1 first)" }
 $tag = "v$Version"
 if (-not $Notes) {
-    $Notes = "VideoRedact $Version`n`nInstaller for Windows 10/11 (64-bit). Existing installations update automatically from Help > Check for updates or at startup."
+    $py = if (Test-Path "C:\dev\venv-videoredact\Scripts\python.exe") { "C:\dev\venv-videoredact\Scripts\python.exe" } else { "python" }
+    $section = (& $py "$repo\scripts\bump_version.py" --notes $Version) -join "`n"
+    $Notes = "VideoRedact $Version`n`nInstaller for Windows 10/11 (64-bit). Installed copies show a notification with a link to this page; nothing is installed automatically.`n`n$section"
 }
 
 # Make sure the tag exists on GitHub

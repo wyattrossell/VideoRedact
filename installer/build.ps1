@@ -1,5 +1,5 @@
 # Builds a new VideoRedact release:
-#   1. bumps the version (patch by default; -Bump minor|major|X.Y.Z)        videoredact/__init__.py + pyproject.toml
+#   1. bumps the version (patch by default; -Bump minor|major|X.Y.Z)        __init__.py + pyproject.toml + VERSION + CHANGELOG.md
 #   2. PyInstaller one-folder build                                          dist\VideoRedact\
 #   3. Inno Setup installer                                                  Published\VideoRedact-<ver>-Setup.exe
 #   4. writes Published\latest.json and SHA256SUMS.txt
@@ -98,7 +98,7 @@ Write-Host "==> Installer: $setup ($([math]::Round((Get-Item $setup).Length/1MB)
 
 # ---- 5. commit + tag ------------------------------------------------------
 if (-not $NoCommit) {
-    git add videoredact/__init__.py pyproject.toml
+    git add videoredact/__init__.py pyproject.toml VERSION CHANGELOG.md
     git commit -q -m "Release $version" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
     git tag -a "v$version" -m "VideoRedact $version"
     git push -q origin HEAD

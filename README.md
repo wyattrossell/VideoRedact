@@ -58,8 +58,9 @@ for what changed in each release and [docs/ROADMAP.md](docs/ROADMAP.md) for what
 
 The installer bundles every model (face/object detectors and the `small`
 speech model), so installed copies work with no internet. When running from
-source, models are downloaded to `%LOCALAPPDATA%\VideoRedact\models` on first
-use (`python scripts\fetch_models.py --whisper small` pre-fetches them).
+source, fetch them once with `python scripts\fetch_models.py --whisper small`
+(into `%LOCALAPPDATA%\VideoRedact\models`); the app itself never downloads
+anything while offline mode (the default) is on.
 
 Long operations (transcribe, track, detect, export) run as background jobs in
 the Jobs panel; the window stays usable and results stream in live. Tracking a

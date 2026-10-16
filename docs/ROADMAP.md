@@ -31,7 +31,7 @@ docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
 - [x] Self-hashed JSON audit manifest per export (operator, versions, model hashes, thresholds, every track/box/edit, verification).
 - [x] Source re-hashed at export and compared with the open-time hash; mismatch flagged in dialog, PDF, project log.
 - [x] Irreversible styles: pixelate 16 px block floor, blur made heavy; black default.
-- [x] Offline by default: no update check, no runtime downloads, telemetry blocked (openvino_telemetry found posting to Google Analytics and excluded); `--selftest --offline-check` socket guard.
+- [x] Offline by default: no runtime downloads, telemetry blocked, update check notify-only (openvino_telemetry found posting to Google Analytics and excluded); `--selftest --offline-check` socket guard.
 - [ ] Manifest signing / hash chain into an evidence system; `--verify <output>` one-shot checker.
 
 ## Top 10 next, drawn from the commercial / legal / technical research

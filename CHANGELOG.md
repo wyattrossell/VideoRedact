@@ -7,6 +7,19 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Fixed (pre-user-testing review)
+- Export asks before replacing an existing output file or its report/project/manifest sidecars.
+- Batch processing never overwrites an existing `.vrproj` or `_REDACTED` file; it writes a numbered sibling.
+- Space and the arrow keys now work after clicking the video, timeline or transcript (they were
+  swallowed by those panels).
+- Starting a transcription no longer wipes the existing transcript before the model has loaded, so a
+  failed load (e.g. a model size that is not bundled) keeps the old text.
+- Export and batch refuse to start while tracking/detection/transcription jobs are running.
+- Deleting a track longer than a second asks for confirmation (there is no undo).
+- Update notification showed raw HTML for the link.
+- "Redact audio range" and the audio lane are disabled on files without an audio stream.
+- Tools → "Check detection models…" and Settings show the bundled model folder; Quick guide lists all keys.
+
 ### Changed
 - Transcription language defaults to English (`language: "en"`, editable in Settings; blank = auto-detect).
   On noisy body-cam openings auto-detect picked a random script and produced non-Latin garbage

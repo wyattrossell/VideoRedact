@@ -33,7 +33,8 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
 3. **Redact words**: click a word, or drag across a phrase, right-click → Redact. Search a
    name and use "Redact all matches". Try Audio → Suggest sensitive speech (PII) for phone
    numbers, dates of birth, addresses.
-4. **Draw a box** on something (drag on the picture) and choose Video → Track selected box.
+4. **Draw a box** on something (drag on the picture); in the dialog that opens choose *Track this
+   object*. (Video → Track selected box re-tracks an existing box from the current frame.)
    Watch the box follow the object, disappear when it leaves the frame, and come back when it
    re-enters. Check the timeline lane shows the visible ranges.
 5. **Auto-detect** (Video → Auto-detect faces/screens/documents). Review the list in the
@@ -46,7 +47,7 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    range without a transcript.
 8. **Export** (File → Export redacted media, Ctrl+E). Leave "Verify" on: the program re-detects faces in the finished
    file and lists any it still sees. Output files beside the video:
-   - `<name>_redacted.mp4` (or your chosen name), SHA-256 in the report
+   - `<name>_REDACTED.mp4` (or your chosen name), SHA-256 in the report
    - `<name>_redaction_report.pdf` and `.csv`
    - `<name>.vrproj` (reopen to continue editing)
    - `<name>_audit.json` (the audit manifest; keep it with the export)
@@ -76,7 +77,8 @@ without attaching footage.
 - **Transcription** is a local speech model; on noisy audio it is a guide for finding words,
   not a verbatim record. Voice activity detection is off by default because it dropped speech
   on body-cam audio.
-- **No undo/redo.** Save the project often (Ctrl+S) and use the panel's delete/restore.
+- **No undo/redo.** Deleting a long track asks first; prefer unticking a redaction's checkbox to
+   keep it in the project. Save the project often (Ctrl+S).
 - **Large files** on a network share are copied to the local disk first (up to 6 GB per file);
   the first operation on such a file is slower.
 - **Update check** only tells you a new version exists; install it from the releases page.

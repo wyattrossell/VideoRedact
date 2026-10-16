@@ -52,6 +52,18 @@ class BatchItemResult:
     error: str = ""
 
 
+def unique_path(p: Path) -> Path:
+    """p if it does not exist, else p with ' (2)', ' (3)', ... before the suffix (Explorer style)."""
+    if not p.exists():
+        return p
+    n = 2
+    while True:
+        cand = p.with_name(f"{p.stem} ({n}){p.suffix}")
+        if not cand.exists():
+            return cand
+        n += 1
+
+
 def run_batch(opts: BatchOptions, progress: Optional[ProgressCB] = None, cancel: Optional[CancelCB] = None) -> list[BatchItemResult]:
     from videoredact.vision.auto_detect import AutoDetectOptions, run_auto_detect
     results: list[BatchItemResult] = []
@@ -86,11 +98,13 @@ def run_batch(opts: BatchOptions, progress: Optional[ProgressCB] = None, cancel:
                 res.tracks = len(tracks)
             out_dir = Path(opts.out_dir) if opts.out_dir else Path(f).parent
             out_dir.mkdir(parents=True, exist_ok=True)
-            proj_path = out_dir / (Path(f).stem + ".vrproj")
+            # Never replace a file a person may have hand-reviewed: <stem>.vrproj is also the default
+            # "Save project as" name, so an existing one gets a numbered sibling instead.
+            proj_path = unique_path(out_dir / (Path(f).stem + ".vrproj"))
             proj.save(proj_path)
             res.project = str(proj_path)
             if opts.export and not (cancel and cancel()):
-                out = out_dir / (Path(f).stem + "_REDACTED" + (".mp4" if info.has_video else ".m4a"))
+                out = unique_path(out_dir / (Path(f).stem + "_REDACTED" + (".mp4" if info.has_video else ".m4a")))
                 eo = ExportOptions(str(out), crf=opts.crf, preset=opts.preset, write_report=True, write_project=True,
                                    verify_labels=["face"] if (opts.verify and info.has_video) else None)
                 r = export_project(proj, eo, progress=lambda p, m: prog(0.65 + 0.35 * p, m), cancel=cancel)

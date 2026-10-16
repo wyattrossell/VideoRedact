@@ -151,3 +151,14 @@ def test_settings_default_language_and_migration(tmp_path, monkeypatch):
     assert json.loads(f.read_text(encoding="utf-8"))["settings_rev"] == 1
     f.write_text(json.dumps({"language": "es", "settings_rev": 1}), encoding="utf-8")
     assert paths.Settings()["language"] == "es"          # explicit choices are kept
+
+
+def test_batch_unique_path_never_overwrites(tmp_path):
+    from videoredact.core.batch import unique_path
+    p = tmp_path / "clip.vrproj"
+    assert unique_path(p) == p
+    p.write_text("x")
+    p2 = unique_path(p)
+    assert p2.name == "clip (2).vrproj" and not p2.exists()
+    p2.write_text("y")
+    assert unique_path(p).name == "clip (3).vrproj"

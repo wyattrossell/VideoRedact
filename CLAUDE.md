@@ -44,7 +44,7 @@ not switch back to QMediaPlayer, see NOTES.md).
 ## Releasing
 `.\installer\build.ps1` bumps the version, builds `Published\VideoRedact-<ver>-Setup.exe`,
 commits, tags and pushes; add `-Publish` to create the GitHub release the
-auto-updater reads. Never change the Inno `AppId` or the asset naming pattern
+update check reads. Never change the Inno `AppId` or the asset naming pattern
 (`videoredact/updater.py` ASSET_RE). Version lives only in `videoredact/__init__.py`.
 
 ## When finishing a session

@@ -49,7 +49,7 @@ docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
 ## Next up
 - [x] First QA on real body-cam footage (720p30, 14 + 47 min Axon clips) -> v0.1.3 speed/VAD/model fixes.
 - [ ] Measure export time on a full 47-min clip; add ETA to job rows; consider hardware decode.
-- [x] Windows installer + GitHub releases + auto-update; models bundled.
+- [x] Windows installer + GitHub releases + update notification; models bundled.
 - [ ] Replace the GPL ffmpeg test binary with an LGPL build in `bin\` before wide distribution.
 - [ ] Undo/redo for redaction edits (command stack over Project).
 - [ ] Review queue: list low-confidence detections and track losses, jump through them.
@@ -80,4 +80,4 @@ docs/RESEARCH-commercial.md, RESEARCH-legal.md and RESEARCH-technical.md.
 ## Packaging
 - [ ] Code-sign the installer (agencies' AV will flag unsigned PyInstaller EXEs).
 - [ ] Offline model bundle variant of the installer vs. download-on-first-run variant.
-- [ ] Auto-update check (opt-in, GitHub releases).
+- [x] Update check (GitHub releases, notify-only with link; Phase 5).

@@ -41,8 +41,10 @@ ordinary Windows PC (no GPU required). MIT licensed.
 
 ## Status
 
-Early but working end-to-end (October 2026). See [NOTES.md](NOTES.md) for the
-developer log and [docs/ROADMAP.md](docs/ROADMAP.md) for what is next.
+v0.1.11 (October 2026): working end-to-end and in first user testing. See
+[docs/USER_TESTING.md](docs/USER_TESTING.md) for the tester guide and known
+limitations, [NOTES.md](NOTES.md) for the developer log, [CHANGELOG.md](CHANGELOG.md)
+for what changed in each release and [docs/ROADMAP.md](docs/ROADMAP.md) for what is next.
 
 ## Running from source (Windows)
 

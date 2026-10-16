@@ -10,7 +10,7 @@
 #define AppURL "https://github.com/wyattrossell/VideoRedact"
 
 [Setup]
-; AppId must never change: it is how upgrades (including the in-app auto-update) find the existing install.
+; AppId must never change: it is how upgrades find the existing install.
 AppId={{B5E7C6D2-3A4F-4E0B-9C21-5D8F1A2B3C4D}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -32,7 +32,7 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; "lowest" lets a standard user install/update into %LocalAppData%\Programs without UAC,
-; which is what the in-app auto-update needs. Admins can still pick "all users" from the dialog.
+; so an officer can install without admin rights. Admins can still pick "all users" from the dialog.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 UninstallDisplayIcon={app}\VideoRedact.exe

@@ -3,7 +3,7 @@
 Line numbers refer to the commit tagged v0.1.7 plus the Phase 0 `accel.py` change.
 
 ## 1. Stack
-- **Language / framework:** Python 3.11+ (dev venv is 3.13), PySide6 (Qt 6.11) desktop UI, PyInstaller one-folder build, Inno Setup installer, GitHub Releases auto-update (`videoredact/updater.py`).
+- **Language / framework:** Python 3.11+ (dev venv is 3.13), PySide6 (Qt 6.11) desktop UI, PyInstaller one-folder build, Inno Setup installer, GitHub Releases update notification, notify-only (`videoredact/updater.py`).
 - **Vision runtime:** OpenCV 5.0 (contrib, CPU build with OpenCL/NVD3D11 only, no CUDA; `cv2.getBuildInformation`), ONNX Runtime 1.30 CPU wheel (`onnxruntime`), `onnx` for one graph rewrite.
 - **Speech:** faster-whisper 1.x on CTranslate2 (int8, CPU).
 - **Media:** FFmpeg 7.1 binary (imageio-ffmpeg wheel in dev; `bin/ffmpeg.exe` in the installer, GPL "essentials" build, LGPL swap still pending) for probe/decode/encode; OpenCV `VideoCapture` (FFmpeg backend) for frame access.

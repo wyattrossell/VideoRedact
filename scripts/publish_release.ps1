@@ -1,5 +1,5 @@
 # Publishes Published\VideoRedact-<version>-Setup.exe as a GitHub release (tag v<version>).
-# The app's auto-updater reads the "latest" release and expects exactly that asset name.
+# The app's update check reads the "latest" release and expects exactly that asset name.
 #
 # Auth: uses GitHub CLI (`gh`) when installed and logged in; otherwise uses the token stored
 # by Git Credential Manager for github.com (the same credential `git push` uses), or $env:GITHUB_TOKEN.

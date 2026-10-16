@@ -4,7 +4,7 @@
 #   3. Inno Setup installer                                                  Published\VideoRedact-<ver>-Setup.exe
 #   4. writes Published\latest.json and SHA256SUMS.txt
 #   5. commits the bump, tags v<ver>, pushes (unless -NoCommit)
-#   6. optionally publishes the GitHub release (-Publish) so installed copies auto-update
+#   6. optionally publishes the GitHub release (-Publish) so installed copies see the update notification
 #
 # Prereqs: scripts\setup_dev.ps1 (venv), `pip install pyinstaller`, Inno Setup 6 (winget install JRSoftware.InnoSetup).
 # Usage:   .\installer\build.ps1 [-Bump patch] [-NoModels] [-NoCommit] [-Publish] [-VenvPath C:\dev\venv-videoredact]

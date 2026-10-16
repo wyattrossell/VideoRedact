@@ -104,7 +104,10 @@ class SettingsDialog(QDialog):
         self.threads.setValue(settings["cpu_threads"])
         self.threads.setSpecialValueText("auto")
         f3.addRow("Whisper model", self.model)
-        f3.addRow("Language", self.lang)
+        self.lang.setPlaceholderText("en")
+        self.lang.setToolTip("ISO language code of the speech (en, es, ...). Leave blank to auto-detect; on noisy "
+                             "body-cam audio auto-detect sometimes picks the wrong language and produces garbage.")
+        f3.addRow("Language (blank = auto-detect)", self.lang)
         f3.addRow("", self.vad)
         f3.addRow("CPU threads", self.threads)
         lay.addWidget(g3)

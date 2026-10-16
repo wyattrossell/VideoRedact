@@ -169,7 +169,7 @@ def selftest(media: str | None = None) -> int:
                 size = settings.get("whisper_model", "small")
                 tr = Transcriber(size)
                 audio, sr = decode_audio(media, sample_rate=16000, mono=True, start=0, duration=90)
-                segs = tr.transcribe(audio[:, 0], duration=len(audio) / sr, language=None)
+                segs = tr.transcribe(audio[:, 0], duration=len(audio) / sr, language=settings.get("language") or None)
                 words = sum(len(s.words) for s in segs)
                 sample = " ".join(w.text for s in segs[:3] for w in s.words)[:120]
                 return f"model {size}: {len(segs)} segments / {words} words in first 90 s; e.g. '{sample}'"

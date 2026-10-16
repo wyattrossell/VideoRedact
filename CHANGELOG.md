@@ -7,6 +7,12 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Changed
+- Transcription language defaults to English (`language: "en"`, editable in Settings; blank = auto-detect).
+  On noisy body-cam openings auto-detect picked a random script and produced non-Latin garbage
+  while running 4x slower (measured on two sample clips, 2026-10-16). Existing installs that saved
+  the old blank value are migrated once (`settings_rev`).
+
 ## [0.1.11] - 2026-10-15
 
 ### Changed

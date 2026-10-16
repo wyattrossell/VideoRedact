@@ -94,7 +94,8 @@ def settings_path() -> Path:
 DEFAULT_SETTINGS: dict[str, Any] = {
     "author": os.environ.get("USERNAME") or os.environ.get("USER") or "",
     "whisper_model": "small",
-    "language": "",                 # "" = auto-detect
+    "language": "en",               # ISO code; "" = auto-detect (on noisy body-cam openings auto-detect picked
+                                    # random scripts and ran 4x slower: Samples 2026-10-16, see CHANGELOG 0.1.12)
     "default_audio_style": "beep",
     "default_video_style": "black",
     "beep_frequency": 1000.0,
@@ -133,6 +134,20 @@ class Settings(dict):
             self.update(json.loads(settings_path().read_text(encoding="utf-8")))
         except Exception:
             pass
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """One-time changes to values older versions saved explicitly."""
+        rev = int(self.get("settings_rev", 0) or 0)
+        if rev < 1:
+            # 0.1.x saved language "" (auto-detect) for everyone; the default is now "en"
+            if not self.get("language"):
+                self["language"] = DEFAULT_SETTINGS["language"]
+            self["settings_rev"] = 1
+            try:
+                self.save()
+            except Exception:
+                pass
 
     def save(self) -> None:
         settings_path().write_text(json.dumps(self, indent=1), encoding="utf-8")

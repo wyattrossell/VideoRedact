@@ -7,6 +7,8 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-10-16
+
 ### Fixed (pre-user-testing review)
 - Export asks before replacing an existing output file or its report/project/manifest sidecars.
 - Batch processing never overwrites an existing `.vrproj` or `_REDACTED` file; it writes a numbered sibling.

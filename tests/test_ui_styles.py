@@ -110,3 +110,35 @@ def test_update_notification_is_notify_only(app, monkeypatch):
     # silent failure at startup, message on manual check
     w._on_update_result(None, "no network", manual=False)
     assert len(shown) == 1
+
+
+def test_transport_keys_work_from_any_panel(app):
+    """Review finding: after clicking the video/timeline/transcript the arrow keys and Space were
+    swallowed by those widgets. An application-level event filter now handles them."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from videoredact.ui.main_window import MainWindow
+    w = MainWindow()
+    w.show()
+    w._load_media("tests/data/sample.mp4")
+    app.processEvents()
+    w.player.pause()
+    w.seek(1.0)
+    f0 = w.player.current_frame()
+    for widget in (w.video, w.timeline, w.transcript):
+        widget.setFocus()
+        app.processEvents()
+        QTest.keyClick(app.focusWidget() or w, Qt.Key_Right)
+        app.processEvents()
+    assert w.player.current_frame() == f0 + 3
+    QTest.keyClick(app.focusWidget() or w, Qt.Key_Left, Qt.ShiftModifier)
+    app.processEvents()
+    assert w.player.current_frame() == f0 + 3 - int(w.fps)
+    # typing in the search box must keep its keys
+    w.transcript.search.setFocus()
+    w.transcript.search.setText("ab")
+    w.transcript.search.setCursorPosition(2)
+    QTest.keyClick(w.transcript.search, Qt.Key_Left)
+    app.processEvents()
+    assert w.transcript.search.cursorPosition() == 1 and w.player.current_frame() == f0 + 3 - int(w.fps)
+    w.close()

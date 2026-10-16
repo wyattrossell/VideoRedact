@@ -8,7 +8,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt, QSize, QTimer, QThread, Signal, QObject, QUrl
+from PySide6.QtCore import Qt, QEvent, QSize, QTimer, QThread, Signal, QObject, QUrl
 from PySide6.QtGui import QAction, QKeySequence, QIcon, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QComboBox, QDockWidget, QFileDialog, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QPushButton, QSlider, QSplitter, QStatusBar, QStyle, QTabWidget,
@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu("&Tools")
         m.addAction(act("&Settings…", self.open_settings, "Ctrl+,"))
-        m.addAction(act("Download detection &models", self.download_models))
+        m.addAction(act("Check detection &models…", self.download_models))
         m = mb.addMenu("&Help")
         m.addAction(act("&Quick guide", self.quick_guide, "F1"))
         m.addAction(act("Check for &updates…", lambda: self.check_for_updates(manual=True)))
@@ -230,14 +230,15 @@ class MainWindow(QMainWindow):
         self.timeline.canvas.audioSelected.connect(lambda i: self._select("audio", i))
         self.timeline.canvas.trackSelected.connect(lambda i: self._select("video", i))
         self.timeline.canvas.rangeSelected.connect(self.redact_time_range)
+        QApplication.instance().installEventFilter(self)   # transport keys from any panel (see eventFilter)
 
     def _update_enabled(self) -> None:
         has = self.project is not None
         vid = has and self.project.media.has_video
         aud = has and self.project.media.has_audio
-        for a in (self.a_save, self.a_save_as, self.a_export, self.a_range):
+        for a in (self.a_save, self.a_save_as, self.a_export):
             a.setEnabled(has)
-        for a in (self.a_transcribe,):
+        for a in (self.a_transcribe, self.a_range):
             a.setEnabled(aud)
         for a in (self.a_find, self.a_pii):
             a.setEnabled(has and bool(self.project.transcript))
@@ -490,12 +491,20 @@ class MainWindow(QMainWindow):
         if kind:
             self._delete(kind, rid)
 
-    def _delete(self, kind: str, rid: str) -> None:
+    def _delete(self, kind: str, rid: str, confirm: bool = True) -> None:
         if not self.project:
             return
         if kind == "audio":
             self.project.remove_audio_redaction(rid)
         else:
+            t = next((x for x in self.project.video_tracks if x.id == rid), None)
+            # no undo yet: ask before throwing away more than a second of tracked/detected frames
+            if confirm and t is not None and t.total_frames() > max(1.0, self.fps) and QMessageBox.question(
+                    self, "Delete redaction",
+                    f"Delete the '{t.label}' track covering {t.total_frames()} frames? This cannot be undone "
+                    "(disable it with its checkbox instead to keep it in the project).",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
             self.project.remove_video_track(rid)
             self.video.selected_track_id = None
         self._project_changed()
@@ -575,9 +584,16 @@ class MainWindow(QMainWindow):
         vad = bool(settings.get("vad", False))
         duration = self.project.media.duration
         proj = self.project
-        proj.transcript = []
-        self.transcript.rebuild()
         self.tabs.setCurrentWidget(self.transcript)
+        started = [False]
+
+        def _begin():
+            # Clear the old transcript only once the model has loaded and produced something, so a
+            # failed model load (e.g. a size that is not bundled, offline) leaves the old text intact.
+            if not started[0]:
+                started[0] = True
+                proj.transcript = []
+                self.transcript.rebuild()
 
         def job(prog, cancel, partial):
             prog(0.0, f"Loading speech model '{size}'…")
@@ -593,6 +609,7 @@ class MainWindow(QMainWindow):
 
         def on_partial(seg):
             if self.project is proj:
+                _begin()
                 proj.transcript.append(seg)
                 self.transcript.append_segment(seg)
                 self._update_enabled()
@@ -600,6 +617,7 @@ class MainWindow(QMainWindow):
         def done(segments):
             if segments is None or self.project is not proj:
                 return
+            _begin()
             proj.transcript = segments
             proj.transcript_model = f"faster-whisper {size} (int8, CPU{', VAD' if vad else ''})"
             proj.log("transcribed", f"{len(segments)} segments, model {size}")
@@ -856,10 +874,22 @@ class MainWindow(QMainWindow):
             self._project_changed()
 
     # --------------------------------------------------------------- export
+    def _jobs_busy(self, what: str) -> bool:
+        """True (after telling the user) when a tracking/detection/transcription job is still running,
+        so an export or batch would ship a half-finished redaction."""
+        if self.jobs.running:
+            QMessageBox.warning(self, what, f"{self.jobs.running} background job(s) are still running "
+                                "(tracking, detection or transcription). Wait for them to finish, or cancel them in "
+                                "the Jobs panel, before starting this.")
+            return True
+        return False
+
     def export_media(self) -> None:
         if not self.project:
             return
         self.player.pause()
+        if self._jobs_busy("Export"):
+            return
         dlg = ExportDialog(self.project, settings, self)
         if dlg.exec() != QDialog.Accepted:
             return
@@ -870,6 +900,16 @@ class MainWindow(QMainWindow):
         if os.path.abspath(opts.output_path) == os.path.abspath(self.project.media.path):
             QMessageBox.critical(self, "Export", "The output must be a different file from the source.")
             return
+        from videoredact.core.export import _report_paths
+        out_p = Path(opts.output_path)
+        existing = [p for p in (out_p, *_report_paths(out_p), Path(str(out_p.with_suffix("")) + "_audit.json")) if p.exists()]
+        if existing:
+            names = "\n".join(f"  {p.name}" for p in existing)
+            if QMessageBox.question(self, "Replace files?",
+                                    f"These files already exist in {out_p.parent} and will be replaced:\n\n{names}\n\n"
+                                    "Replace them? (Choose No to pick another name.)",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
         settings["export_crf"], settings["export_preset"] = opts.crf, opts.preset
         settings["verify_export"] = bool(opts.verify_labels)
         settings.save()
@@ -938,6 +978,8 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- batch
     def batch_process(self) -> None:
+        if self._jobs_busy("Batch"):
+            return
         dlg = BatchDialog(settings, self)
         if dlg.exec() != QDialog.Accepted or not dlg.files():
             return
@@ -1003,8 +1045,10 @@ class MainWindow(QMainWindow):
                 reg.ensure_model(n, lambda p, m: prog((i + p) / len(names), m))
             return True
 
-        run_task(self, "Downloading detection models…", job,
-                 lambda ok: ok and QMessageBox.information(self, "Models", f"All detection models are available in\n{reg.models_dir()}"))
+        from videoredact.paths import model_search_dirs
+        where = "\n".join(str(d) for d in model_search_dirs() if d.exists())
+        run_task(self, "Checking detection models…", job,
+                 lambda ok: ok and QMessageBox.information(self, "Models", f"All detection models are present in:\n{where}"))
 
     # ------------------------------------------------------------- updates
     def schedule_update_check(self) -> None:
@@ -1054,8 +1098,7 @@ class MainWindow(QMainWindow):
                           + "Nothing is installed automatically. Open the release page to download the "
                             "installer, then run it (an administrator may be required on managed PCs).",
                           parent=self)
-        box.setTextFormat(Qt.PlainText)
-        box.setInformativeText(f"<a href=\"{info.page}\">{info.page}</a>")
+        box.setInformativeText(info.page)
         b_open = box.addButton("Open download page", QMessageBox.AcceptRole)
         box.addButton("Later", QMessageBox.RejectRole)
         b_skip = box.addButton("Skip this version", QMessageBox.DestructiveRole)
@@ -1081,10 +1124,12 @@ Audio ▸ Suggest sensitive speech finds phone numbers, names after cues, addres
 <b>3. Video:</b> Video ▸ Auto-detect finds faces, screens and documents. Drag a box on the video around
 anything else (a license plate, a tattoo, a notepad) and choose <i>Track this object</i>: it is followed
 forward and backward and re-acquired when it leaves and re-enters the frame.<br>
-<b>4. Review:</b> Play with <i>Preview redactions</i> on. Redacted audio is muted during preview.
+<b>4. Review:</b> Play with <i>Preview redactions</i> on: you see the boxes and hear the beep/silence exactly as exported.
 Drag a box to fix its position: that adds a keyframe. Delete false hits in the Redactions tab.<br>
 <b>5. Export</b> (Ctrl+E): writes the redacted file plus a PDF/CSV report with SHA-256 hashes and the project file.<br><br>
-<b>Keys:</b> Space play/pause · ←/→ frame step · Delete remove selected · Ctrl+wheel zoom timeline · double-click video to fit.
+<b>Keys:</b> Space play/pause · ←/→ frame step (Shift: 1 s) · [ ] trim track start/end to playhead · = extend track to playhead ·
+F / Shift+F next/previous flagged track · Delete remove selected · Ctrl+R redact audio range at playhead · Ctrl+F find word ·
+Ctrl+E export · Ctrl+B batch · Ctrl+wheel zoom timeline · double-click video to fit.
 """)
 
     def about(self) -> None:
@@ -1094,13 +1139,40 @@ Drag a box to fix its position: that adds a keyframe. Delete false hits in the R
                           "(the only network access is the optional update check against GitHub).<br><br>"
                           "Components: FFmpeg (LGPL build), OpenCV, ONNX Runtime, faster-whisper, YuNet, YOLOX, Qt/PySide6 (LGPL).")
 
-    def keyPressEvent(self, event):
+    _TRANSPORT_KEYS = (Qt.Key_Space, Qt.Key_Left, Qt.Key_Right)
+
+    def _transport_key(self, event) -> bool:
+        """Space = play/pause, Left/Right = frame step (Shift: one second). Returns True if handled."""
         k = event.key()
-        if k == Qt.Key_Space and not isinstance(QApplication.focusWidget(), (type(self.transcript.search),)):
+        if self.project is None or k not in self._TRANSPORT_KEYS:
+            return False
+        fw = QApplication.focusWidget()
+        # never steal keys from something the user is typing in or navigating with arrows
+        from PySide6.QtWidgets import (QAbstractItemView, QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit,
+                                       QTextEdit)
+        if isinstance(fw, (QLineEdit, QAbstractSpinBox, QComboBox, QPlainTextEdit)):
+            return False
+        if isinstance(fw, QTextEdit) and not fw.isReadOnly():
+            return False
+        if isinstance(fw, QAbstractItemView) and k != Qt.Key_Space:
+            return False
+        if k == Qt.Key_Space:
             self.toggle_play()
         elif k == Qt.Key_Left:
             self.step_frames(-(int(self.fps) if event.modifiers() & Qt.ShiftModifier else 1))
-        elif k == Qt.Key_Right:
-            self.step_frames(int(self.fps) if event.modifiers() & Qt.ShiftModifier else 1)
         else:
+            self.step_frames(int(self.fps) if event.modifiers() & Qt.ShiftModifier else 1)
+        return True
+
+    def eventFilter(self, obj, event):
+        # The video view, timeline and transcript are scroll areas / text views that consume arrow
+        # keys themselves, so keyPressEvent on the window never saw them after a click there.
+        # An application-level filter handles the transport keys first (only while this window is
+        # active, so dialogs keep their own keyboard handling).
+        if event.type() == QEvent.KeyPress and QApplication.activeWindow() is self and self._transport_key(event):
+            return True
+        return super().eventFilter(obj, event)
+
+    def keyPressEvent(self, event):
+        if not self._transport_key(event):
             super().keyPressEvent(event)

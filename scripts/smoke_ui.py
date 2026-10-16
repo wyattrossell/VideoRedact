@@ -52,7 +52,7 @@ print("boxes drawn on view:", len(w.video._boxes))
 assert len(w.video._boxes) == 1
 
 # delete via panel + timeline refresh
-w._delete("video", t.id)
+w._delete("video", t.id, confirm=False)
 assert not w.project.video_tracks
 # save & reload
 out = Path("tests/data/out/ui_smoke.vrproj"); out.parent.mkdir(exist_ok=True)

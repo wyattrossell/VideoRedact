@@ -160,7 +160,7 @@ class TimelineCanvas(QWidget):
         if pos.x() < LABEL_W:
             return
         t = self.t_of(pos.x())
-        if self.project and self._lane_at(pos) == 0 and not hit:
+        if self.project and self.project.media.has_audio and self._lane_at(pos) == 0 and not hit:
             # start a range selection on the audio lane
             self._range_drag = (t, t)
         else:

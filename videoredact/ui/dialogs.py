@@ -146,7 +146,8 @@ class SettingsDialog(QDialog):
         f4.addRow("Detect every N frames", self.stride)
         f4.addRow("Object confidence", self.dconf)
         f4.addRow("Face confidence", self.fconf)
-        f4.addRow("Models folder", QLabel(str(models_dir())))
+        from videoredact.paths import model_search_dirs
+        f4.addRow("Model folders", QLabel("\n".join(str(d) for d in model_search_dirs())))
         lay.addWidget(g4)
 
         g5 = QGroupBox("Network (everything else in this program is offline)")
@@ -432,9 +433,11 @@ class BatchDialog(QDialog):
         from videoredact.core.media import VIDEO_EXTS, AUDIO_EXTS
         d = QFileDialog.getExistingDirectory(self, "Add all media in folder", self.settings.get("last_dir", ""))
         if d:
+            have = set(self.files())
             for p in sorted(Path(d).iterdir()):
-                if p.suffix.lower() in VIDEO_EXTS | AUDIO_EXTS:
+                if p.suffix.lower() in VIDEO_EXTS | AUDIO_EXTS and str(p) not in have:
                     self.list.addItem(str(p))
+                    have.add(str(p))
 
     def _pick_out(self):
         d = QFileDialog.getExistingDirectory(self, "Output folder", self.out.text() or self.settings.get("last_dir", ""))

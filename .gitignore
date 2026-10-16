@@ -35,3 +35,6 @@ bench/frames/
 bench/labelstudio/
 bench/labels/
 !bench/labels/classes.txt
+
+# smoke-test outputs
+tests/data/out/

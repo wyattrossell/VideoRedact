@@ -167,7 +167,8 @@ class BBox:
                     a.w + (b.w - a.w) * t, a.h + (b.h - a.h) * t)
 
     def to_list(self) -> list[float]:
-        return [round(self.x, 5), round(self.y, 5), round(self.w, 5), round(self.h, 5)]
+        # plain floats: detector boxes arrive as numpy float32, which json cannot serialise
+        return [float(v) for v in (round(self.x, 5), round(self.y, 5), round(self.w, 5), round(self.h, 5))]
 
 
 @dataclass

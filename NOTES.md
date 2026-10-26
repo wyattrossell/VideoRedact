@@ -233,6 +233,21 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-16: Readiness review before user testing (v0.1.12). Ran everything:
+  65 tests, six smokes, installed build on a real clip with --detect --transcribe
+  --offline-check. Findings fixed: (1) transcription language auto-detect produced
+  non-Latin garbage and ran 4x slower on noisy body-cam openings -> default
+  language "en" + one-time settings migration (settings_rev); (2) an independent
+  code review found export/batch silently overwriting files, arrow keys dead after
+  clicking the video/timeline/transcript (widgets swallowed them; now an
+  app-level event filter), transcript wiped before a failed model load, export
+  allowed mid-tracking, delete with no confirm, raw HTML in the update dialog ->
+  all fixed (see CHANGELOG 0.1.12). Deferred: audio-only waveform decode on the
+  UI thread, possible QThread warning on quit mid-detection, NVIDIA tier, LGPL
+  FFmpeg swap. docs/USER_TESTING.md is the tester guide. smoke_playback shows
+  PLAYBACK PROBLEM only when the CPU is saturated by other smokes; run it alone.
+  Gotcha: smoke_ui must call _delete(..., confirm=False) (new confirmation dialog).
+
 - 2026-10-15 (later): Phase 5 (updates and release) + licensing audit. Updater is
   notify-only (background check, 5 s timeout, silent offline, link to the release
   page; download/launch code removed and a test forbids re-adding it); startup

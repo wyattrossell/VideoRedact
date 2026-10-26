@@ -38,3 +38,5 @@ bench/labels/
 
 # smoke-test outputs
 tests/data/out/
+# reference pairs (original + hand-redacted) for leak-rate scoring, CJIS: local only
+bench/reference/

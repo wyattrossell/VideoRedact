@@ -56,7 +56,9 @@ $existing = $null
 try { $existing = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$slug/releases/tags/$tag" } catch {}
 if (-not $existing) {
     $body = @{ tag_name = $tag; name = "VideoRedact $Version"; body = $Notes; draft = [bool]$Draft; prerelease = $false } | ConvertTo-Json
-    $existing = Invoke-RestMethod -Method Post -Headers $headers -Uri "https://api.github.com/repos/$slug/releases" -Body $body -ContentType "application/json"
+    # Windows PowerShell 5.1 sends a string body as ISO-8859-1; the changelog notes contain UTF-8 arrows,
+    # which GitHub then rejects as "Problems parsing JSON". Send bytes with an explicit charset.
+    $existing = Invoke-RestMethod -Method Post -Headers $headers -Uri "https://api.github.com/repos/$slug/releases" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType "application/json; charset=utf-8"
     Write-Host "Created release $tag"
 }
 # remove an asset with the same name if re-publishing

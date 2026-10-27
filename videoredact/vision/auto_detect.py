@@ -79,6 +79,7 @@ class AutoDetectOptions:
     tiles: bool = False        # SAHI-style tiled face detection (mostly false positives at 720p; useful at 4K)
     multiscale: bool = True    # also run the face detector on a 1.5x upscaled frame: finds small/distant/profile faces (+2.4x face cost)
     head_fallback: bool = True # emit a head box for persons without a detected face
+    emit_person_boxes: bool = True  # whole-body boxes from the head-fallback person detector; False = only when "person" is a label
     face_pad: float = 0.25     # dilation of face/head boxes (fraction of box size)
     face_shape: str = "ellipse"
     detector_cfg: Optional[dict] = None   # override for detectors.build()
@@ -103,6 +104,7 @@ def build_detector(opts: "AutoDetectOptions"):
     cfg.setdefault("object_model", opts.obj_model)
     cfg.setdefault("obj_conf", opts.obj_conf)
     cfg.setdefault("head_fallback", opts.head_fallback and "face" in opts.labels)
+    cfg.setdefault("emit_person_boxes", opts.emit_person_boxes)
     cfg.setdefault("threads", opts.threads)
     return build(cfg)
 

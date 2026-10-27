@@ -49,6 +49,7 @@ def build(cfg: dict[str, Any]) -> Detector:
                                   int(cfg.get("face_max_side", 1280)), bool(cfg.get("tiles", False)),
                                   int(cfg.get("tile", 640)), cfg.get("multiscale"), threads))
     objects = set(cfg.get("objects") or [])
+    person_requested = "person" in objects
     if cfg.get("head_fallback") and "person" not in objects:
         objects.add("person")
     if objects:
@@ -60,7 +61,11 @@ def build(cfg: dict[str, Any]) -> Detector:
         members.append(GroundingDinoDetector(prompts=cfg["open_vocab"], score_thr=float(cfg.get("ov_conf", 0.3))))
     det: Detector = members[0] if len(members) == 1 else EnsembleDetector(members)
     if cfg.get("head_fallback") or float(cfg.get("face_pad", 0)) > 0:
-        det = HeadFallback(det, face_pad=float(cfg.get("face_pad", 0)))
+        # emit_person_boxes: None (default) = keep the historical behaviour (whole-body boxes come
+        # out even when only faces were asked for); False = only when "person" was requested.
+        emit = cfg.get("emit_person_boxes")
+        det = HeadFallback(det, face_pad=float(cfg.get("face_pad", 0)),
+                           emit_person=True if emit is None else (bool(emit) or person_requested))
     return det
 
 

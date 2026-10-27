@@ -119,12 +119,16 @@ class HeadFallback(Detector):
     boxes the heuristic is skipped; a dedicated head detector is the Phase C plan."""
 
     def __init__(self, inner: Detector, face_pad: float = 0.0, head_w: float = 0.45, head_h: float = 0.22,
-                 min_person_h: float = 0.12, as_face: bool = True):
+                 min_person_h: float = 0.12, as_face: bool = True, emit_person: bool = True):
         # as_face: label head boxes "face" (source "head-fallback") so a person whose face is
         # seen in some frames and not others stays ONE track instead of alternating face/head tracks.
+        # emit_person: pass the whole-body person boxes through as detections. The person class is
+        # added to the object detector only to derive head boxes, so when the user did not ask for
+        # "person" these boxes are review burden (422 whole-body tracks on a 45-min reference clip).
         self.inner = inner
         self.face_pad, self.head_w, self.head_h, self.min_person_h = face_pad, head_w, head_h, min_person_h
         self.as_face = as_face
+        self.emit_person = emit_person
         self.labels = set(inner.labels) | ({"face"} if as_face else {"head"})
         self.name = f"headfallback({inner.name})"
 
@@ -141,7 +145,8 @@ class HeadFallback(Detector):
                 elif d.label != "person":
                     res.append(d)
                 else:
-                    res.append(d)
+                    if self.emit_person:
+                        res.append(d)
                     p = d.bbox
                     if p.h < self.min_person_h or p.w > 1.3 * p.h:
                         continue

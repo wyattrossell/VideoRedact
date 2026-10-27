@@ -56,13 +56,14 @@ def prepare(frames: Path, labels: Path, out: Path, val_frac: float = 0.15, seed:
     clips = sorted({i[0].parent.name for i in items})
     random.Random(seed).shuffle(clips)
     val_clips = set(clips[: max(1, int(len(clips) * val_frac))])
-    for split in ("train", "val"):
+    # YOLOX 0.3 hard-codes the image folder names train2017 / val2017 in its COCO loader
+    for split in ("train2017", "val2017"):
         (out / split).mkdir(parents=True, exist_ok=True)
     coco = {s: {"images": [], "annotations": [], "categories": [{"id": i + 1, "name": c} for i, c in enumerate(classes)]} for s in ("train", "val")}
     ann_id = 1
     for img_id, (img, txt) in enumerate(items, 1):
         split = "val" if img.parent.name in val_clips else "train"
-        dst = out / split / f"{img.parent.name}__{img.name}"
+        dst = out / f"{split}2017" / f"{img.parent.name}__{img.name}"
         if not dst.exists():
             shutil.copy2(img, dst)
         im = cv2.imread(str(dst))
@@ -105,8 +106,8 @@ class Exp(MyExp):
         self.data_dir = r"{data.resolve()}"
         self.train_ann = "instances_train.json"
         self.val_ann = "instances_val.json"
-        self.train_name = "train"
-        self.val_name = "val"
+        self.train_name = "train2017"
+        self.val_name = "val2017"
         self.max_epoch = {epochs}
         self.no_aug_epochs = max(2, {epochs} // 10)
         self.warmup_epochs = 1
@@ -114,6 +115,7 @@ class Exp(MyExp):
         self.enable_mixup = False
         self.mosaic_scale = (0.5, 1.5)
         self.output_dir = r"{out_dir.resolve()}"
+        self.data_num_workers = 4
 '''
     p = out_dir / f"exp_{model}.py"
     out_dir.mkdir(parents=True, exist_ok=True)

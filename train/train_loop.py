@@ -42,13 +42,16 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--eval-every", type=int, default=3)
     ap.add_argument("--no-aug-last", type=int, default=2, help="last N epochs without mosaic")
+    ap.add_argument("--resume", default="", help="checkpoint saved by this script (latest_ckpt.pth) to continue from")
     a = ap.parse_args()
 
     from yolox.utils import ModelEMA
     # YOLOX's evaluator wants its C++ fast COCO eval (needs ninja + MSVC); use pycocotools instead
     import yolox.evaluators.coco_evaluator as _ce
+    import yolox.layers as _yl
     from pycocotools.cocoeval import COCOeval as _COCOeval
     _ce.COCOeval = _COCOeval
+    _yl.COCOeval_opt = _COCOeval     # the evaluator imports this name lazily at evaluation time
     exp = load_exp(a.exp)
     exp.data_num_workers = a.workers
     out = Path(a.out) / exp.exp_name
@@ -67,6 +70,12 @@ def main() -> None:
             loaded += 1
     model.load_state_dict(own)
     print(f"loaded {loaded}/{len(own)} tensors from {a.ckpt} (head class layers re-initialised)")
+    start_epoch = 0
+    if a.resume:
+        rck = torch.load(a.resume, map_location="cpu", weights_only=False)
+        model.load_state_dict(rck["model"])
+        start_epoch = int(rck.get("epoch", -1)) + 1
+        print(f"resumed from {a.resume} at epoch {start_epoch}")
     model.to(dev).train()
     ema = ModelEMA(model, 0.9998)
 
@@ -95,9 +104,9 @@ def main() -> None:
 
     evaluator = exp.get_evaluator(batch_size=a.batch, is_distributed=False)
     best = -1.0
-    step = 0
+    step = start_epoch * iters
     t_start = time.time()
-    for epoch in range(a.epochs):
+    for epoch in range(start_epoch, a.epochs):
         if epoch == a.epochs - a.no_aug_last:
             loader.close_mosaic()
             model.head.use_l1 = True

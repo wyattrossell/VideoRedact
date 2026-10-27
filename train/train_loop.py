@@ -68,6 +68,7 @@ def main() -> None:
 
     loader = exp.get_data_loader(batch_size=a.batch, is_distributed=False, no_aug=False, cache_img=None)
     iters = len(loader)
+    loader_iter = iter(loader)   # one persistent iterator over the infinite sampler
     total = iters * a.epochs
     warm = iters  # one epoch warm-up
     pg0, pg1, pg2 = [], [], []
@@ -99,7 +100,8 @@ def main() -> None:
             print("mosaic off for the final epochs")
         t_ep = time.time()
         run_loss = 0.0
-        for i, batch in enumerate(loader):
+        for i in range(iters):
+            batch = next(loader_iter)   # YOLOX's loader uses an InfiniteSampler: it never ends an epoch by itself
             imgs, targets = batch[0], batch[1]
             imgs = imgs.to(dev, non_blocking=True).float()
             targets = targets.to(dev, non_blocking=True).float()

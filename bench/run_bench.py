@@ -241,8 +241,39 @@ def evaluate(tracks: list[VideoTrack], gt: GT, W: int, H: int) -> dict:
 
 
 # ----------------------------------------------------------------------------- per clip
+TRACKS_DIR = Path("bench/tracks")   # detected tracks per clip (git-ignored): re-score without re-detecting
+
+
+def save_tracks(clip: Path, tracks: list[VideoTrack]) -> Path:
+    TRACKS_DIR.mkdir(parents=True, exist_ok=True)
+    p = TRACKS_DIR / f"{clip.stem}.json"
+    p.write_text(json.dumps([t.to_dict() for t in tracks], default=float), encoding="utf-8")
+    return p
+
+
+def load_tracks(path: Path) -> list[VideoTrack]:
+    return [VideoTrack.from_dict(d) for d in json.loads(path.read_text(encoding="utf-8"))]
+
+
+def _parse_opts(items: list[str]) -> dict:
+    """face_pad=0.4 lead_in=30 head_fallback=false -> typed dict for AutoDetectOptions."""
+    out = {}
+    for it in items:
+        k, _, v = it.partition("=")
+        vl = v.strip().lower()
+        if vl in ("true", "false"):
+            out[k.strip()] = (vl == "true")
+        else:
+            try:
+                out[k.strip()] = int(v) if v.strip().lstrip("-").isdigit() else float(v)
+            except ValueError:
+                out[k.strip()] = v.strip()
+    return out
+
+
 def bench_clip(clip: Path, labels_dir: Path | None, classes: list[str], detect_labels: list[str],
-               stride: int, do_export: bool, parallel: bool) -> dict:
+               stride: int, do_export: bool, parallel: bool, tracks_from: Path | None = None,
+               detect_kwargs: dict | None = None) -> dict:
     info = probe(str(clip))
     W, H, n = info.width, info.height, info.frame_count
     res = {"clip": clip.name, "width": W, "height": H, "fps": info.fps, "frames": n, "duration_s": info.duration}
@@ -251,12 +282,19 @@ def bench_clip(clip: Path, labels_dir: Path | None, classes: list[str], detect_l
     try:
         # ---- auto-detect (single process, instrumented) ----
         from videoredact.vision.auto_detect import build_detector
-        opts = AutoDetectOptions(labels=detect_labels, stride=stride, workers=1)
-        det = TimedDetector(build_detector(opts), timer)
-        t0 = time.perf_counter()
-        with FrameReader(clip) as r:
-            tracks = run_auto_detect(r, opts, detector=det)  # detector given -> single process
-        res["autodetect_total_s"] = time.perf_counter() - t0
+        opts = AutoDetectOptions(labels=detect_labels, stride=stride, workers=1, **(detect_kwargs or {}))
+        if tracks_from is not None:
+            tracks = load_tracks(tracks_from / f"{clip.stem}.json")
+            res["tracks_from"] = str(tracks_from / f"{clip.stem}.json")
+            res["autodetect_total_s"] = 0.0
+            parallel = False
+        else:
+            det = TimedDetector(build_detector(opts), timer)
+            t0 = time.perf_counter()
+            with FrameReader(clip) as r:
+                tracks = run_auto_detect(r, opts, detector=det)  # detector given -> single process
+            res["autodetect_total_s"] = time.perf_counter() - t0
+            res["tracks_file"] = str(save_tracks(clip, tracks))
         res["tracks"] = len(tracks)
         res["track_frames"] = sum(t.total_frames() for t in tracks)
         dec_detect = timer.t["decode"]
@@ -282,7 +320,7 @@ def bench_clip(clip: Path, labels_dir: Path | None, classes: list[str], detect_l
                 pass
     finally:
         restore()
-    res["fps"] = {"autodetect": round(n / res["autodetect_total_s"], 1)}
+    res["fps"] = {"autodetect": round(n / res["autodetect_total_s"], 1) if res["autodetect_total_s"] else None}
     if do_export:
         res["fps"]["export"] = round(n / res["export_total_s"], 1)
     # ---- parallel wall clock (what the user experiences) ----
@@ -348,8 +386,11 @@ def main():
     ap.add_argument("--no-export", action="store_true")
     ap.add_argument("--no-parallel", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="only the first N clips")
+    ap.add_argument("--match", default="", help="only clips whose file name contains this text")
+    ap.add_argument("--tracks-from", default="", help="score tracks saved by an earlier run (dir of <stem>.json) instead of detecting")
+    ap.add_argument("--detect-opt", action="append", default=[], help="AutoDetectOptions override, e.g. face_pad=0.4 (repeatable)")
     a = ap.parse_args()
-    clips = sorted(Path(a.clips).glob("*.mp4"))
+    clips = sorted(p for p in Path(a.clips).glob("*.mp4") if a.match.lower() in p.name.lower())
     if a.limit:
         clips = clips[: a.limit]
     labels_dir = Path(a.labels) if Path(a.labels).exists() else None
@@ -364,7 +405,8 @@ def main():
                "cover_threshold": COVER_THR, "gt_classes": classes}, "clips": []}
     for clip in clips:
         print(f"== {clip.name}", flush=True)
-        r = bench_clip(clip, labels_dir, classes, a.detect_labels.split(","), a.stride, not a.no_export, not a.no_parallel)
+        r = bench_clip(clip, labels_dir, classes, a.detect_labels.split(","), a.stride, not a.no_export, not a.no_parallel,
+                       tracks_from=Path(a.tracks_from) if a.tracks_from else None, detect_kwargs=_parse_opts(a.detect_opt))
         acc = r.get("accuracy", {})
         print(f"   autodetect {r['fps']['autodetect']} fps (parallel {r['fps'].get('autodetect_parallel', '-')}), "
               f"export {r['fps'].get('export', '-')} fps, tracks={r['tracks']}, "

@@ -40,3 +40,11 @@ bench/labels/
 tests/data/out/
 # reference pairs (original + hand-redacted) for leak-rate scoring, CJIS: local only
 bench/reference/
+
+# detected tracks per clip from bench/run_bench.py (case footage geometry)
+bench/tracks/
+
+# pseudo-labelled frames from our footage (CJIS, local only)
+train/pseudo/
+train/data/
+train/runs/

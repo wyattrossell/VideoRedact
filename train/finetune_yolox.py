@@ -137,8 +137,7 @@ def train(data: Path, model: str, epochs: int, batch: int, device_count: int) ->
     subprocess.run(cmd, check=True)
 
 
-def export(ckpt: Path, model: str, out: Path) -> None:
-    data = Path("train/data")
+def export(ckpt: Path, model: str, out: Path, data: Path = Path("train/data")) -> None:
     exp = write_exp(data, model, 1, 1, Path("train/runs"))
     cmd = [sys.executable, "-m", "yolox.tools.export_onnx", "-f", str(exp), "-c", str(ckpt), "--output-name", str(out),
            "--opset", "13"]
@@ -153,14 +152,14 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("prepare"); p.add_argument("--frames", default="bench/frames"); p.add_argument("--labels", default="bench/labels"); p.add_argument("--out", default="train/data")
     t = sub.add_parser("train"); t.add_argument("--data", default="train/data"); t.add_argument("--model", default="yolox_tiny", choices=list(PRETRAINED)); t.add_argument("--epochs", type=int, default=60); t.add_argument("--batch", type=int, default=16); t.add_argument("--devices", type=int, default=1)
-    e = sub.add_parser("export"); e.add_argument("--ckpt", required=True); e.add_argument("--model", default="yolox_tiny"); e.add_argument("--out", default="models/yolox_tiny_vr.onnx")
+    e = sub.add_parser("export"); e.add_argument("--ckpt", required=True); e.add_argument("--model", default="yolox_tiny"); e.add_argument("--out", default="models/yolox_tiny_vr.onnx"); e.add_argument("--data", default="train/data")
     a = ap.parse_args()
     if a.cmd == "prepare":
         prepare(Path(a.frames), Path(a.labels), Path(a.out))
     elif a.cmd == "train":
         train(Path(a.data), a.model, a.epochs, a.batch, a.devices)
     else:
-        export(Path(a.ckpt), a.model, Path(a.out))
+        export(Path(a.ckpt), a.model, Path(a.out), Path(a.data))
 
 
 if __name__ == "__main__":

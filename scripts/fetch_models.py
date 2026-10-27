@@ -27,6 +27,9 @@ def main():
     args = ap.parse_args()
     names = args.only or list(MODELS)
     for name in names:
+        if not MODELS[name].url:
+            print(f"[skip]    {name:12s} optional, no download source (train/README.md)")
+            continue
         if is_available(name):
             print(f"[ok]      {name:12s} {model_path(name)}")
             continue

@@ -56,6 +56,16 @@ def build(cfg: dict[str, Any]) -> Detector:
         from . import adapters
         members.append(adapters.YOLOXDetector(cfg.get("object_model", "yolox_tiny"), float(cfg.get("obj_conf", 0.35)),
                                               labels=objects, threads=threads))
+    # Fine-tuned detector for classes COCO lacks (document / notepad / paper, licence plate): trained
+    # with train/finetune_yolox.py on our own footage; used only when the model file is present.
+    doc_model = cfg.get("doc_model")
+    doc_labels = {l for l in (cfg.get("doc_labels") or []) if l in ("document", "plate")}
+    if doc_model and doc_labels:
+        from videoredact.vision import models as reg
+        if doc_model in reg.MODELS and reg.is_available(doc_model):
+            from . import adapters
+            members.append(adapters.YOLOXDetector(doc_model, float(cfg.get("doc_conf", 0.35)), labels=doc_labels,
+                                                  threads=threads, class_names=list(cfg.get("doc_classes") or ["document", "plate"])))
     if cfg.get("open_vocab"):
         from .openvocab import GroundingDinoDetector
         members.append(GroundingDinoDetector(prompts=cfg["open_vocab"], score_thr=float(cfg.get("ov_conf", 0.3))))

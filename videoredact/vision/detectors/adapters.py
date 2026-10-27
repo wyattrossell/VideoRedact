@@ -33,10 +33,13 @@ class CenterFaceDetector(PerFrameDetector):
 
 
 class YOLOXDetector(PerFrameDetector):
-    def __init__(self, model: str = "yolox_tiny", conf_thr: float = 0.35, labels: Optional[set[str]] = None, threads: int = 0):
+    def __init__(self, model: str = "yolox_tiny", conf_thr: float = 0.35, labels: Optional[set[str]] = None, threads: int = 0,
+                 class_names: Optional[list[str]] = None):
+        # class_names: output-class -> label for models fine-tuned on our own data (train/README.md);
+        # without it the COCO mapping applies.
         from ..detector import ObjectDetector, COCO_TO_LABEL
-        self.inner = ObjectDetector(model, conf_thr, labels=labels, threads=threads)
-        self.labels = set(labels) if labels else set(COCO_TO_LABEL.values())
+        self.inner = ObjectDetector(model, conf_thr, labels=labels, threads=threads, class_names=class_names)
+        self.labels = set(labels) if labels else (set(class_names) if class_names else set(COCO_TO_LABEL.values()))
         self.name = model
 
     def _detect_frame(self, frame: np.ndarray) -> list[Detection]:

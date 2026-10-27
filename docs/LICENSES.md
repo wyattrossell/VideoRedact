@@ -15,6 +15,7 @@ or must be replaced before wide distribution) · ⚪ dev/evaluation only, not in
 | YuNet (OpenCV Zoo, 2023mar) | `face_detection_yunet_2023mar.onnx` | face detector (default) | MIT | WIDER FACE (academic dataset; model weights released under MIT by the authors) | ✅ |
 | CenterFace | `centerface.onnx` | face detector (option) | MIT | WIDER FACE | ✅ |
 | YOLOX-tiny / YOLOX-s (Megvii) | `yolox_tiny.onnx`, `yolox_s.onnx` | screens, phones, documents, people | Apache-2.0 | COCO (annotations CC BY 4.0; images Flickr terms). Standard practice treats the weights as Apache-2.0. | ✅ |
+| YOLOX-tiny fine-tuned on our footage (optional) | `yolox_tiny_doc.onnx` | documents / notepads / paper, licence plates | Apache-2.0 (YOLOX code and COCO-pretrained starting weights); training data is our own footage, pseudo-labelled by OWLv2 (Apache-2.0) and reviewed locally | HPD body-cam frames (CJIS, never leave the machine); no public dataset | 🟡 only when present |
 | ViTTrack (OpenCV Zoo) | `object_tracking_vittrack_2023sep.onnx` | single-object tracker | Apache-2.0 | GOT-10k / LaSOT / TrackingNet (academic) | ✅ |
 | faster-whisper `small` (Systran CTranslate2 conversion of OpenAI Whisper) | `models/whisper/...` | speech-to-text | MIT (both OpenAI's weights and Systran's conversion) | OpenAI's undisclosed web corpus | ✅ |
 | Silero VAD (inside faster-whisper, off by default) | bundled with faster-whisper | voice activity | MIT | – | ✅ |

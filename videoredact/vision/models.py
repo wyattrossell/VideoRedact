@@ -48,6 +48,11 @@ MODELS: dict[str, ModelSpec] = {
         "yolox_tiny", "yolox_tiny.onnx",
         "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",
         "Apache-2.0", "COCO object detector, faster/less accurate (416px)", 15_000_000),
+    # Optional, no download source: produced by train/finetune_yolox.py from our own pseudo-labelled
+    # footage (train/pseudolabel_openvocab.py). Bundled when present in models/; skipped when absent.
+    "yolox_tiny_doc": ModelSpec(
+        "yolox_tiny_doc", "yolox_tiny_doc.onnx", "",
+        "Apache-2.0 (YOLOX) fine-tuned on HPD footage", "Documents / notepads / paper and licence plates (416px)", 15_000_000),
 }
 
 
@@ -74,6 +79,9 @@ def ensure_model(name: str, progress: Optional[ProgressCB] = None) -> Path:
     dest = model_path(name)
     if is_available(name):
         return dest
+    if not spec.url:
+        raise RuntimeError(f"Model '{spec.filename}' is optional and has no download source; it is produced by "
+                           f"train/finetune_yolox.py and copied into {models_dir()}.")
     from videoredact.paths import settings
     if settings.get("offline", True) or os.environ.get("VIDEOREDACT_OFFLINE") == "1":
         raise RuntimeError(f"Model '{spec.filename}' is not installed and offline mode is on. "

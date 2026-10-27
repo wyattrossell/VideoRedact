@@ -76,3 +76,28 @@ Per clip and aggregated it reports:
 
 Re-run after every pipeline change and commit the JSON next to `baseline.json`
 (e.g. `bench\results\2026-10-20_openvino.json`) so gains are measured, not claimed.
+
+## 7. Ground truth from a hand-redacted reference copy (no labelling needed)
+
+When someone has already redacted a recording by hand (any tool), the pair
+`original` + `redacted` is ground truth: wherever the copy differs from the
+original beyond re-encode noise, a person decided something had to be covered.
+
+```powershell
+# put the pair in bench\reference\  (git-ignored; neutral names, no case numbers or people's names)
+C:\dev\venv-videoredact\Scripts\python bench\labels_from_reference.py bench\reference\X_original.mp4 bench\reference\X_redacted.mp4
+#   -> bench\labels\X_original\*.txt (class "redacted", one sample per second), previews in bench\reference\preview
+C:\dev\venv-videoredact\Scripts\python bench\run_bench.py --clips bench\reference --match X_original --no-export --no-parallel --out bench\results\ref_X.json
+#   -> saves our tracks to bench\tracks\X_original.json so variants can be re-scored without re-detecting:
+C:\dev\venv-videoredact\Scripts\python bench\run_bench.py --clips bench\reference --match X_original --tracks-from bench\tracks --no-export --out bench\results\ref_X_rescored.json
+C:\dev\venv-videoredact\Scripts\python bench\leak_report.py bench\reference\X_original.mp4
+#   -> which reference boxes we missed (images in bench\reference\leaks) and how many extra boxes a reviewer
+#      following the same policy would have to delete
+```
+
+The diff tolerates a re-encode at a different frame rate (matched by timestamp, with the
+one-frame motion mismatch removed by comparing against neighbouring originals), a global tone
+change in the re-rendered segment (histogram matched per frame) and blur boxes over dark,
+textureless regions (weak but area-consistent change + texture loss). Remember the reference
+encodes a *policy* (who gets redacted), not just detection: boxes we add that the reference
+did not have are "extra", not necessarily wrong.

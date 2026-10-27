@@ -80,6 +80,8 @@ class AutoDetectOptions:
     multiscale: bool = True    # also run the face detector on a 1.5x upscaled frame: finds small/distant/profile faces (+2.4x face cost)
     head_fallback: bool = True # emit a head box for persons without a detected face
     emit_person_boxes: bool = True  # whole-body boxes from the head-fallback person detector; False = only when "person" is a label
+    doc_model: str = "yolox_tiny_doc"  # fine-tuned document/plate detector (train/); ignored when the file is absent
+    doc_conf: float = 0.35
     face_pad: float = 0.25     # dilation of face/head boxes (fraction of box size)
     face_shape: str = "ellipse"
     detector_cfg: Optional[dict] = None   # override for detectors.build()
@@ -105,6 +107,9 @@ def build_detector(opts: "AutoDetectOptions"):
     cfg.setdefault("obj_conf", opts.obj_conf)
     cfg.setdefault("head_fallback", opts.head_fallback and "face" in opts.labels)
     cfg.setdefault("emit_person_boxes", opts.emit_person_boxes)
+    cfg.setdefault("doc_model", opts.doc_model)
+    cfg.setdefault("doc_conf", opts.doc_conf)
+    cfg.setdefault("doc_labels", [l for l in opts.labels if l in ("document", "plate", "license_plate")])
     cfg.setdefault("threads", opts.threads)
     return build(cfg)
 

@@ -45,6 +45,10 @@ def main() -> None:
     a = ap.parse_args()
 
     from yolox.utils import ModelEMA
+    # YOLOX's evaluator wants its C++ fast COCO eval (needs ninja + MSVC); use pycocotools instead
+    import yolox.evaluators.coco_evaluator as _ce
+    from pycocotools.cocoeval import COCOeval as _COCOeval
+    _ce.COCOeval = _COCOeval
     exp = load_exp(a.exp)
     exp.data_num_workers = a.workers
     out = Path(a.out) / exp.exp_name

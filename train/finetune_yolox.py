@@ -36,7 +36,7 @@ PRETRAINED = {
 }
 
 
-def prepare(frames: Path, labels: Path, out: Path, val_frac: float = 0.15, seed: int = 7) -> None:
+def prepare(frames: Path, labels: Path, out: Path, val_frac: float = 0.15, seed: int = 7, min_box: int = 0) -> None:
     import cv2
     classes = CLASSES
     cf = labels / "classes.txt"
@@ -75,6 +75,8 @@ def prepare(frames: Path, labels: Path, out: Path, val_frac: float = 0.15, seed:
                 continue
             c = int(float(p[0]))
             cx, cy, w, h = (float(v) for v in p[1:5])
+            if min_box and (w * W < min_box or h * H < min_box):
+                continue   # too small to learn at the training resolution (and to matter)
             coco[split]["annotations"].append({"id": ann_id, "image_id": img_id, "category_id": c + 1,
                                                "bbox": [(cx - w / 2) * W, (cy - h / 2) * H, w * W, h * H],
                                                "area": w * W * h * H, "iscrowd": 0})
@@ -87,10 +89,10 @@ def prepare(frames: Path, labels: Path, out: Path, val_frac: float = 0.15, seed:
           f"val: {len(coco['val']['images'])} / {len(coco['val']['annotations'])}; classes={classes}")
 
 
-def write_exp(data: Path, model: str, epochs: int, batch: int, out_dir: Path) -> Path:
+def write_exp(data: Path, model: str, epochs: int, batch: int, out_dir: Path, size: int = 0) -> Path:
     classes = json.loads((data / "classes.json").read_text())
     depth, width = {"yolox_tiny": (0.33, 0.375), "yolox_s": (0.33, 0.50)}[model]
-    size = 416 if model == "yolox_tiny" else 640
+    size = size or (416 if model == "yolox_tiny" else 640)
     exp = f'''# auto-generated YOLOX experiment
 import os
 from yolox.exp import Exp as MyExp
@@ -117,7 +119,7 @@ class Exp(MyExp):
         self.output_dir = r"{out_dir.resolve()}"
         self.data_num_workers = 4
 '''
-    p = out_dir / f"exp_{model}.py"
+    p = out_dir / f"exp_{model}_{size}.py"
     out_dir.mkdir(parents=True, exist_ok=True)
     p.write_text(exp, encoding="utf-8")
     return p
@@ -150,12 +152,15 @@ def export(ckpt: Path, model: str, out: Path, data: Path = Path("train/data")) -
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("prepare"); p.add_argument("--frames", default="bench/frames"); p.add_argument("--labels", default="bench/labels"); p.add_argument("--out", default="train/data")
+    p = sub.add_parser("prepare"); p.add_argument("--frames", default="bench/frames"); p.add_argument("--labels", default="bench/labels"); p.add_argument("--out", default="train/data"); p.add_argument("--min-box", type=int, default=0)
+    x = sub.add_parser("exp", help="only write the experiment file (for train/train_loop.py)"); x.add_argument("--data", default="train/data"); x.add_argument("--model", default="yolox_tiny"); x.add_argument("--size", type=int, default=0); x.add_argument("--epochs", type=int, default=30); x.add_argument("--batch", type=int, default=8)
     t = sub.add_parser("train"); t.add_argument("--data", default="train/data"); t.add_argument("--model", default="yolox_tiny", choices=list(PRETRAINED)); t.add_argument("--epochs", type=int, default=60); t.add_argument("--batch", type=int, default=16); t.add_argument("--devices", type=int, default=1)
     e = sub.add_parser("export"); e.add_argument("--ckpt", required=True); e.add_argument("--model", default="yolox_tiny"); e.add_argument("--out", default="models/yolox_tiny_vr.onnx"); e.add_argument("--data", default="train/data")
     a = ap.parse_args()
     if a.cmd == "prepare":
-        prepare(Path(a.frames), Path(a.labels), Path(a.out))
+        prepare(Path(a.frames), Path(a.labels), Path(a.out), min_box=a.min_box)
+    elif a.cmd == "exp":
+        print(write_exp(Path(a.data), a.model, a.epochs, a.batch, Path("train/runs"), a.size))
     elif a.cmd == "train":
         train(Path(a.data), a.model, a.epochs, a.batch, a.devices)
     else:

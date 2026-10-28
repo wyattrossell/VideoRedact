@@ -102,7 +102,8 @@ def selftest(media: str | None = None) -> int:
 
     def _models():
         from videoredact.vision import models as reg
-        return {n: ("present" if reg.is_available(n) else "not downloaded") for n in reg.MODELS}
+        return {n: ("present" if reg.is_available(n) else ("optional, not installed" if reg.is_optional(n) else "not downloaded"))
+                for n in reg.MODELS}
     step("detection models", _models)
 
     def _face():

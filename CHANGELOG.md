@@ -7,6 +7,12 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Fixed
+- Tools -> "Check detection models..." failed on every install with "Model 'yolox_tiny_doc.onnx'
+  is optional and has no download source" (regression in 0.1.13: the optional fine-tuned
+  detector was registered but never ships). Optional models are now skipped and listed as
+  "optional, not installed"; the self-test labels them the same way.
+
 ## [0.1.13] - 2026-10-28
 
 ### Added

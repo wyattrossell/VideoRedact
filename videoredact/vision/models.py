@@ -71,6 +71,18 @@ def is_available(name: str) -> bool:
     return p.exists() and p.stat().st_size >= MODELS[name].min_bytes
 
 
+def is_optional(name: str) -> bool:
+    """Optional models have no download source (e.g. a locally fine-tuned detector).
+    The app runs without them and must never ask for them."""
+    return not MODELS[name].url
+
+
+def required_models() -> list[str]:
+    """What a model check must find or fetch: every registered model except optional
+    ones that are not installed."""
+    return [n for n in MODELS if not (is_optional(n) and not is_available(n))]
+
+
 def ensure_model(name: str, progress: Optional[ProgressCB] = None) -> Path:
     """Return the model path; download only when offline mode is off.
     In offline mode (default) a missing model is an error that names the file, so a

@@ -1037,7 +1037,7 @@ class MainWindow(QMainWindow):
         from videoredact.vision import models as reg
 
         def job(prog, cancel):
-            names = list(reg.MODELS)
+            names = reg.required_models()   # optional models without a download source are skipped
             for i, n in enumerate(names):
                 if cancel():
                     return None
@@ -1047,8 +1047,10 @@ class MainWindow(QMainWindow):
 
         from videoredact.paths import model_search_dirs
         where = "\n".join(str(d) for d in model_search_dirs() if d.exists())
+        optional = [n for n in reg.MODELS if reg.is_optional(n) and not reg.is_available(n)]
+        note = f"\n\nOptional, not installed (not needed): {', '.join(optional)}" if optional else ""
         run_task(self, "Checking detection models…", job,
-                 lambda ok: ok and QMessageBox.information(self, "Models", f"All detection models are present in:\n{where}"))
+                 lambda ok: ok and QMessageBox.information(self, "Models", f"All detection models are present in:\n{where}{note}"))
 
     # ------------------------------------------------------------- updates
     def schedule_update_check(self) -> None:

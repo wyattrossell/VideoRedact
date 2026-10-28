@@ -19,6 +19,15 @@ DEFAULT_QUERIES = ["a notepad", "a sheet of paper", "a document", "a clipboard",
                    "a computer screen", "a mobile phone", "a license plate", "a credit card", "an id card"]
 
 
+def enhance(bgr: np.ndarray) -> np.ndarray:
+    """Lift dark body-cam frames: CLAHE on L (LAB) then gamma 0.6."""
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    lab[:, :, 0] = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(lab[:, :, 0])
+    out = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    lut = np.array([((i / 255.0) ** 0.6) * 255 for i in range(256)], dtype=np.uint8)
+    return cv2.LUT(out, lut)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("video")
@@ -28,6 +37,9 @@ def main() -> None:
     ap.add_argument("--thr", type=float, default=0.10)
     ap.add_argument("--size", type=int, default=0, help="resize longer side before inference (0 = model default)")
     ap.add_argument("--out", default="bench/reference/preview_openvocab")
+    ap.add_argument("--device", default="cpu", help="cpu or cuda (C:\dev\venv-train has the CUDA torch)")
+    ap.add_argument("--enhance", action="store_true",
+                    help="CLAHE + gamma 0.6 before inference (does the teacher see dark paper better?)")
     a = ap.parse_args()
 
     import torch
@@ -35,7 +47,7 @@ def main() -> None:
     torch.set_num_threads(8)
     t0 = time.time()
     proc = AutoProcessor.from_pretrained(a.model)
-    model = AutoModelForZeroShotObjectDetection.from_pretrained(a.model).eval()
+    model = AutoModelForZeroShotObjectDetection.from_pretrained(a.model).eval().to(a.device)
     print(f"loaded {a.model} in {time.time() - t0:.0f}s")
     queries = [q.strip() for q in a.queries.split(",") if q.strip()]
     out_dir = Path(a.out)
@@ -52,14 +64,16 @@ def main() -> None:
         if a.size:
             s = a.size / max(frame.shape[:2])
             img = cv2.resize(frame, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+        if a.enhance:
+            img = enhance(img)
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         from PIL import Image
         pil = Image.fromarray(rgb)
         t1 = time.time()
         with torch.no_grad():
-            inputs = proc(text=[queries], images=pil, return_tensors="pt")
+            inputs = proc(text=[queries], images=pil, return_tensors="pt").to(a.device)
             outputs = model(**inputs)
-            target = torch.tensor([pil.size[::-1]])
+            target = torch.tensor([pil.size[::-1]], device=a.device)
             try:
                 res = proc.post_process_grounded_object_detection(outputs, threshold=a.thr, target_sizes=target, text_labels=[queries])[0]
                 labels = res.get("text_labels") or [queries[int(i)] for i in res["labels"]]

@@ -254,7 +254,9 @@ samples/ (720p30 Axon clips), i7-14700T:
   fragments / 13 s -> 1 span / 22.7 s of the human's 23 s; no more 85 s searches
   with false re-acquisitions). Drag = track immediately, Shift+drag = dialog.
   Keys N/Shift+N, Ctrl+Z undo delete, E, X split, T. Settings rev 2 resets
-  detect_head. All in bench/results/PRECISION_PROFILE.md. Next: Wyatt's own
+  detect_head. All in bench/results/PRECISION_PROFILE.md. v0.1.15 built,
+  installed per-user, self-test ALL OK / 0 network attempts; not yet published
+  (0.1.14 is not published either). Installed copy on this laptop: 0.1.15. Next: Wyatt's own
   hand-redacted project files as ground truth for faces (see chat 2026-10-28).
 - 2026-10-28 (pm): v0.1.13 built (BBox float fix + inert emit_person_boxes /
   doc_model hooks) but NOT published: its Tools > "Check detection models" fails

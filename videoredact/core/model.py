@@ -315,6 +315,23 @@ class VideoTrack:
             new.append(s)
         self.spans = new
 
+    def split_at(self, frame: int) -> Optional["VideoTrack"]:
+        """Cut the track at `frame`: this track keeps everything before it, the returned new
+        track (same label/style/shape/pad) gets `frame` and everything after. None when the
+        cut would leave either side empty."""
+        if self.bbox_at(frame) is None or frame <= self.first_frame() or frame > self.last_frame():
+            return None
+        import copy
+        tail = copy.deepcopy(self)
+        tail.id = uuid.uuid4().hex[:12]
+        tail.source = self.source
+        tail.note = (self.note + "; " if self.note else "") + f"split at frame {frame}"
+        self.trim_end(frame - 1)
+        tail.trim_start(frame)
+        if not self.spans or not tail.spans:
+            return None
+        return tail
+
     def extend_to(self, frame: int) -> None:
         """Extend the nearest span so the track covers `frame` (box held from the edge)."""
         if not self.spans:

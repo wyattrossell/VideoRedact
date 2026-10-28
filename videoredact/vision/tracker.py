@@ -59,13 +59,20 @@ class TrackOptions:
     work_side: int = 512            # longest side of the working frame
     tracker: str = "vit"            # vit (default, scale-adaptive) | kcf (fastest) | csrt (slow)
     backward: bool = True
-    backward_lost_limit_s: float = 4.0
+    lost_limit_s: float = 8.0       # stop (either direction) once the object has been gone this long
+    search_to_end: bool = False     # forward: keep searching to end_frame even after lost_limit_s (object leaves and returns)
     end_frame: Optional[int] = None
     correct_every: int = 12         # processed frames between local template corrections
     detect_every: int = 10          # processed frames between detector snaps (tracking)
     lost_search_every: int = 3      # processed frames between template searches (lost)
     lost_detect_every: int = 8      # processed frames between detector searches (lost)
     pad_frames: int = 2
+    # A manually drawn box is a statement that the object must be covered: hold the last box for a
+    # moment after the tracker loses it and bridge short gaps between re-acquisitions, so the
+    # redaction does not flicker (a dark notepad on the reference clip came back as 17 fragments
+    # covering 13 of 22 s before this; see bench/results/PRECISION_PROFILE.md).
+    hold_frames: int = 12           # frames the last box persists after a loss, both directions
+    bridge_gap_s: float = 2.0       # gaps up to this long between nearby spans are interpolated over
 
 
 _VIT_PATH: Optional[str] = None
@@ -439,13 +446,14 @@ class ObjectTracker:
 
         fwd: list[Span] = []
         self._live = [fwd]
-        self._run(self._forward(start_frame, last, first), app, init_box, fwd, progress, cancel, total, "Tracking forward")
+        limit = int(o.lost_limit_s * reader.fps)
+        self._run(self._forward(start_frame, last, first), app, init_box, fwd, progress, cancel, total,
+                  "Tracking forward", lost_limit_frames=None if o.search_to_end else limit)
         spans += fwd
 
         if o.backward and start_frame > 0 and not (cancel and cancel()):
             bwd: list[Span] = []
             self._live = [fwd, bwd]
-            limit = int(o.backward_lost_limit_s * reader.fps)
             self._run(self._backward(start_frame, first), app, init_box, bwd,
                       progress, cancel, total, "Tracking backward", lost_limit_frames=limit)
             spans += bwd
@@ -458,10 +466,43 @@ class ObjectTracker:
             s.start_frame, s.end_frame = keys[0], keys[-1]
             track.spans.append(s)
         track.merge_spans()
+        hold = max(o.pad_frames, o.hold_frames)
         for s in track.spans:
-            s.start_frame = max(0, s.start_frame - o.pad_frames)
-            s.end_frame = min(last, s.end_frame + step - 1 + o.pad_frames)
+            s.start_frame = max(0, s.start_frame - hold)
+            s.end_frame = min(last, s.end_frame + step - 1 + hold)
         track.merge_spans()
+        bridge_spans(track, int(o.bridge_gap_s * reader.fps))
         if progress:
             progress(1.0, "Tracking complete")
         return track
+
+
+def bridge_spans(track: VideoTrack, max_gap: int) -> VideoTrack:
+    """Join consecutive spans of one tracked object whose gap is <= max_gap frames and whose
+    boundary boxes are near each other (same object, briefly lost); the gap is then covered by
+    interpolation between the two boundary keyframes. In place; returns the track."""
+    if max_gap <= 0 or len(track.spans) < 2:
+        return track
+    spans = sorted(track.spans, key=lambda s: s.start_frame)
+    out = [spans[0]]
+    for s in spans[1:]:
+        prev = out[-1]
+        gap = s.start_frame - prev.end_frame
+        a, b = prev.bbox_at(prev.end_frame), s.bbox_at(s.start_frame)
+        if 0 < gap <= max_gap and a is not None and b is not None and _near_boxes(a, b):
+            prev.keyframes.update(s.keyframes)
+            prev.end_frame = max(prev.end_frame, s.end_frame)
+        else:
+            out.append(s)
+    track.spans = out
+    track.merge_spans()
+    return track
+
+
+def _near_boxes(a: BBox, b: BBox) -> bool:
+    """Similar size and centres within ~1.5 box-sizes: plausibly the same object."""
+    sa, sb = max(a.w, a.h), max(b.w, b.h)
+    if sa <= 0 or sb <= 0 or not (0.5 <= sa / sb <= 2.0):
+        return False
+    (ax, ay), (bx, by) = a.center(), b.center()
+    return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5 <= 1.5 * max(sa, sb)

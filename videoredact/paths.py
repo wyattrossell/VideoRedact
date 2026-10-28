@@ -121,10 +121,20 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "face_pad": 0.25,               # dilation of auto-detected face/head boxes
     "lead_frames": 15,              # back-fill / persistence around detections
     "assoc": "botsort",             # botsort | bytetrack | ocsort | iou
-    "detect_head": True,
+    "detect_head": False,           # head fallback: about 1 in 3 of its boxes was a real head on the reference clip
     "detect_tiles": False,
     "detect_multiscale": True,
+    "detect_precise": True,         # only keep confident detections (AutoDetectOptions defaults); False = recall profile
+    "track_lost_limit_s": 8.0,      # manual tracking stops once the object has been gone this long
+    "track_search_to_end": False,   # manual tracking keeps searching to the end (object leaves and returns)
+    "quick_box": True,              # a drawn box is tracked immediately with the last label/shape/style; Shift+drag asks
+    "last_box_label": "face",
+    "last_box_shape": None,         # None = ellipse for faces, rectangle otherwise
+    "last_box_style": None,         # None = project default
 }
+
+
+SETTINGS_REV = 2   # bump with every entry added to Settings._migrate()
 
 
 class Settings(dict):
@@ -144,6 +154,13 @@ class Settings(dict):
             if not self.get("language"):
                 self["language"] = DEFAULT_SETTINGS["language"]
             self["settings_rev"] = 1
+        if rev < 2:
+            # 0.1.15: precision rework. Every install saved detect_head=True from the dialog;
+            # the head fallback is now off by default (measured ~1/3 real on the reference clip).
+            self["detect_head"] = False
+            self["detect_precise"] = True
+            self["settings_rev"] = 2
+        if rev < 2:
             try:
                 self.save()
             except Exception:

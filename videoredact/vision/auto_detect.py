@@ -65,7 +65,16 @@ class AutoDetectOptions:
     obj_model: str = "yolox_tiny"
     iou_thr: float = 0.3
     max_missed: int = 8        # detection steps (stride frames each)
-    min_hits: int = 1          # recall first: keep single detections too (if confident, see SINGLE_MIN_CONF)
+    # --- what counts as a confirmed track (the "precise" profile; see recall_profile()) ---
+    # Measured on a 45-min reference clip (bench/results/PRECISION_PROFILE.md): face tracks with
+    # >= 3 detections at average confidence >= 0.8 were all real faces, 0.7-0.8 mostly real, and
+    # every bin below that (single/double detections, head-fallback boxes, boxes taller than half
+    # the frame) was mostly phones, lights, hands and car parts.
+    min_hits: int = 3          # detections needed before a face track is kept
+    min_track_conf: float = 0.7      # average detection confidence needed for a face track
+    obj_min_hits: int = 2            # objects (phone/screen/document): YOLOX scores lower but is precise
+    obj_min_track_conf: float = 0.4
+    max_face_frac: float = 0.6       # reject "faces" taller than this fraction of the frame height
     link_gap_s: float = 2.0    # post-pass: join same-label fragments separated by <= this gap when boxes overlap/are near (2 s: 568 -> 464 tracks on the crash-scene slice)
     start_frame: int = 0
     end_frame: Optional[int] = None
@@ -78,8 +87,8 @@ class AutoDetectOptions:
     lead_out: int = 15         # persistence: frames kept after the last detection / carry
     tiles: bool = False        # SAHI-style tiled face detection (mostly false positives at 720p; useful at 4K)
     multiscale: bool = True    # also run the face detector on a 1.5x upscaled frame: finds small/distant/profile faces (+2.4x face cost)
-    head_fallback: bool = True # emit a head box for persons without a detected face
-    emit_person_boxes: bool = True  # whole-body boxes from the head-fallback person detector; False = only when "person" is a label
+    head_fallback: bool = False  # emit a head box for persons without a detected face (691 of 1,651 face tracks on the reference clip, ~1/3 real)
+    emit_person_boxes: bool = False  # whole-body boxes from the head-fallback person detector; False = only when "person" is a label
     doc_model: str = "yolox_tiny_doc"  # fine-tuned document/plate detector (train/); ignored when the file is absent
     doc_conf: float = 0.35
     face_pad: float = 0.25     # dilation of face/head boxes (fraction of box size)
@@ -89,6 +98,37 @@ class AutoDetectOptions:
     scene_cut: bool = True     # detect every frame right after a hard cut and reset carriers/tracker state
     adaptive: bool = True      # skip detection on frames nearly identical to the last detected one (static camera)
     max_stride: int = 15       # cap for adaptive skipping (frames)
+
+    # The pre-0.1.15 "find everything, the reviewer deletes" behaviour, kept as an option
+    # (Auto-detect dialog, bench --detect-opt). Not a dataclass field.
+    RECALL = dict(min_hits=1, min_track_conf=0.0, obj_min_hits=1, obj_min_track_conf=0.0,
+                  max_face_frac=1.0, head_fallback=True, emit_person_boxes=True)
+
+    @classmethod
+    def recall_profile(cls, **kw) -> "AutoDetectOptions":
+        return cls(**{**cls.RECALL, **kw})
+
+    def apply_profile(self, precise: bool) -> "AutoDetectOptions":
+        """precise=False switches every confirmation rule back to the recall-first values."""
+        if not precise:
+            for k, v in self.RECALL.items():
+                setattr(self, k, v)
+        return self
+
+
+def confirm_track(label: str, hits: int, mean_conf: float, box_h: float, opts: AutoDetectOptions,
+                  fallback_only: bool = False) -> bool:
+    """Is a finished live track real enough to keep? Faces: at least `min_hits` detections with
+    average confidence `min_track_conf`, and a plausible size. Objects (phone/screen/document/
+    person): the looser `obj_*` rule, because YOLOX scores real phones 0.4-0.6 and is precise
+    at that level. A track made only of head-fallback boxes needs more than one of them."""
+    if fallback_only and hits <= 1:
+        return False
+    if label in ("face", "head"):
+        if box_h > opts.max_face_frac:
+            return False
+        return hits >= opts.min_hits and mean_conf >= opts.min_track_conf
+    return hits >= opts.obj_min_hits and mean_conf >= opts.obj_min_track_conf
 
 
 # ----------------------------------------------------------------------------
@@ -238,9 +278,10 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
     n_cuts = n_skipped = 0
 
     def close(L: _Live):
-        if L.hits == 1 and L.fallback_hits == 1:
-            return   # a lone head-fallback box (person seen once, no face) is too noisy to keep
-        if L.hits >= max(2, opts.min_hits) or (opts.min_hits <= 1 and L.hits == 1 and L.score_sum >= SINGLE_MIN_CONF):
+        hs = [b.h for b in L.span.keyframes.values()]
+        box_h = float(np.median(hs)) if hs else 0.0
+        if confirm_track(L.label, L.hits, L.score_sum / max(1, L.hits), box_h, opts,
+                         fallback_only=(L.fallback_hits >= L.hits)):
             finished.append(L)
 
     mot = None

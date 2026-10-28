@@ -147,9 +147,9 @@ def test_settings_default_language_and_migration(tmp_path, monkeypatch):
     f.write_text(json.dumps({"language": "", "whisper_model": "small"}), encoding="utf-8")
     monkeypatch.setattr(paths, "settings_path", lambda: f)
     s = paths.Settings()
-    assert s["language"] == "en" and s["settings_rev"] == 1
-    assert json.loads(f.read_text(encoding="utf-8"))["settings_rev"] == 1
-    f.write_text(json.dumps({"language": "es", "settings_rev": 1}), encoding="utf-8")
+    assert s["language"] == "en" and s["settings_rev"] == paths.SETTINGS_REV
+    assert json.loads(f.read_text(encoding="utf-8"))["settings_rev"] == paths.SETTINGS_REV
+    f.write_text(json.dumps({"language": "es", "settings_rev": paths.SETTINGS_REV}), encoding="utf-8")
     assert paths.Settings()["language"] == "es"          # explicit choices are kept
 
 

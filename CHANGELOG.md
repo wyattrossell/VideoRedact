@@ -7,6 +7,8 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-10-28
+
 ### Changed (video redaction rework: predictable, high-confidence, faster to review)
 - Auto-detect keeps only confident detections by default: a face must be detected 3+ times with
   average confidence 0.7+, boxes taller than 60 % of the frame are rejected, whole-body "person"

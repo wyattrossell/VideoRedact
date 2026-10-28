@@ -33,7 +33,7 @@ build/
 bench/clips/
 bench/frames/
 bench/labelstudio/
-bench/labels/
+bench/labels*/
 !bench/labels/classes.txt
 
 # smoke-test outputs
@@ -45,6 +45,6 @@ bench/reference/
 bench/tracks/
 
 # pseudo-labelled frames from our footage (CJIS, local only)
-train/pseudo/
+train/pseudo*/
 train/data/
 train/runs/

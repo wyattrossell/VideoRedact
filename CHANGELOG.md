@@ -7,6 +7,22 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Added
+- Auto-detect option `emit_person_boxes` (detector config): whole-body "person" boxes came out of
+  the head fallback even when only faces were requested. Default unchanged (`true`) pending review,
+  because on the reference recording those boxes were the only thing covering the hand-redacted area.
+- Detector ensemble accepts an optional fine-tuned document/plate model (`doc_model`,
+  `yolox_tiny_doc.onnx`) when the file is present. No such model ships yet: the fine-tune did not
+  generalise (see `bench/results/REFERENCE_TANYARD.md`), so behaviour is unchanged.
+- Bench tooling (developer only, nothing ships): ground truth from a hand-redacted reference copy
+  (`labels_from_reference.py`), leak report, re-scoring from saved tracks, open-vocabulary
+  teacher evaluation and pseudo-labelling, YOLOX fine-tuning loop for Windows, face identity
+  grouping (`face_identities.py`).
+
+### Fixed
+- `BBox.to_list()` returns plain floats (numpy float32 from the detectors broke the JSON audit
+  manifest and bench output).
+
 ## [0.1.12] - 2026-10-16
 
 ### Fixed (pre-user-testing review)

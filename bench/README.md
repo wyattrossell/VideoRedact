@@ -101,3 +101,17 @@ change in the re-rendered segment (histogram matched per frame) and blur boxes o
 textureless regions (weak but area-consistent change + texture loss). Remember the reference
 encodes a *policy* (who gets redacted), not just detection: boxes we add that the reference
 did not have are "extra", not necessarily wrong.
+
+Follow-up tools on the same saved tracks (all local, dev only):
+
+```powershell
+# how many distinct people are behind the face tracks (SFace embeddings, scipy average-linkage;
+# embeddings are cached in bench\reference\identities so --thr can be swept)
+C:\dev\venv-videoredact\Scripts\python bench\face_identities.py bench\reference\X_original.mp4 [--thr 0.70]   # 0.70 measured on body-cam footage; the published SFace point (0.64) over-splits
+#   -> people / sizes on stdout, one contact sheet per person in bench\reference\identities
+# does an open-vocabulary teacher see what COCO classes miss? (needs C:\dev\venv-eval or venv-train)
+C:\dev\venv-train\Scripts\python bench\eval_openvocab.py bench\reference\X_original.mp4 --model google/owlv2-base-patch16-ensemble --device cuda --times 666,684,120 [--enhance]
+```
+
+The fine-tuning path (OWLv2 pseudo-labels -> YOLOX-tiny -> `yolox_tiny_doc.onnx`) lives in
+`train/`; results and why it is not shipped yet are in `results/REFERENCE_TANYARD.md`.

@@ -195,6 +195,16 @@ samples/ (720p30 Axon clips), i7-14700T:
   installs use PowerShell `Start-Process` (Git Bash mangles `/PID`, `/LOG=`
   style flags into paths; `taskkill /PID` silently does nothing there).
 
+- Training on Windows (train/): YOLOX 0.3's own trainer ran at 5 s/iteration
+  with the GPU idle (the loader and GPU step each measured < 0.2 s), so
+  train/train_loop.py is a minimal loop around exp.get_model(); YOLOX's
+  sampler is infinite, so epochs must be fixed-length over a persistent
+  iterator; its fast COCO eval needs a C++ build, so pycocotools is
+  monkeypatched in. `pip install yolox` fails building old onnx: install the
+  deps by hand and yolox with --no-deps. venv at C:\dev\venv-train (torch cu128).
+- Never write O(n^2)-per-step Python clustering for thousands of embeddings:
+  the first bench/face_identities.py spent 3.4 CPU-hours on 1,624 vectors
+  before being killed; scipy's linkage does it in under a second.
 - Store Python virtualizes `%LOCALAPPDATA%`: anything the venv writes to
   `C:\Users\<you>\AppData\Local\VideoRedact` really lands in
   `...\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_*\LocalCache\Local\VideoRedact`.
@@ -233,6 +243,19 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-28: Reference-pair analysis finished (bench/results/REFERENCE_TANYARD.md).
+  The hand-redacted copy covers one notepad for 23 s and nothing else; we cover
+  20/21 of those boxes only through accidental whole-body person boxes and add
+  17k extra box-frames. Tried to close the document gap with a YOLOX-tiny
+  fine-tune on OWLv2 pseudo-labels (train/, C:\dev\venv-train, RTX 3050 Ti):
+  three runs, the honest one (reference clip held out) fits its own labels
+  (document AP50 0.56) and scores 0.00 on the held-out clip; the teacher put
+  zero document boxes inside the notepad span and brightening frames does not
+  help it. Not shipped; the doc_model hook stays inert. Needs hand-labelled
+  paper from many scenes. Identity grouping of face tracks (SFace, scipy
+  clustering, bench/face_identities.py) measured as the basis for
+  "everyone except X" and long-gap track linking; numbers in the report.
+  Open decision for Wyatt: emit_person_boxes default (see report).
 - 2026-10-16: Readiness review before user testing (v0.1.12). Ran everything:
   65 tests, six smokes, installed build on a real clip with --detect --transcribe
   --offline-check. Findings fixed: (1) transcription language auto-detect produced
@@ -328,7 +351,7 @@ samples/ (720p30 Axon clips), i7-14700T:
   detect call with face+screen+document+phone), export 202 fps (66 % encode+pipe,
   29 % decode, 5 % redact). Clips are < 1500 frames so the parallel path did not
   engage (parallel column == single). Accuracy pending Wyatt's labels.
-  Label Studio 1.23 installed at C:\devenv-labelstudio (bench\label.ps1).
+  Label Studio 1.23 installed at C:\dev\venv-labelstudio (bench\label.ps1).
   docs/UPGRADE_PLAN.md written; waiting for approval before changing the pipeline.
 
 - 2026-10-14: Phase 0 audit. docs/ARCHITECTURE_CURRENT.md documents the

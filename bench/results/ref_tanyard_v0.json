@@ -1,0 +1,151 @@
+{
+ "version": "0.1.12",
+ "date": "2026-10-26 17:07",
+ "hardware": "Intel(R) Core(TM) i7-14700T (20c/28t), 64 GB, Windows 11 (10.0.26200); tier=intel via openvino:GPU.0 [Intel Intel(R) UHD Graphics 770]",
+ "python": "3.13.14",
+ "settings": {
+  "stride": 5,
+  "detect_labels": [
+   "face",
+   "screen",
+   "document",
+   "phone"
+  ],
+  "cover_threshold": 0.9,
+  "gt_classes": [
+   "redacted"
+  ]
+ },
+ "clips": [
+  {
+   "clip": "tanyard_original.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 92.7
+   },
+   "frames": 81990,
+   "duration_s": 2735.73,
+   "autodetect_total_s": 884.4609195000012,
+   "tracks_file": "bench\\tracks\\tanyard_original.json",
+   "tracks": 2313,
+   "track_frames": 515436,
+   "stage_s": {
+    "decode_detect_pass": 81.052,
+    "detect": 534.823,
+    "track": 180.185,
+    "detect_calls": 16395,
+    "assoc_other": 88.401
+   },
+   "accuracy": {
+    "labelled_frames": 2736,
+    "leak_rate": 0.0003654970760233918,
+    "classes": {
+     "document": {
+      "gt_boxes": 0,
+      "recall@90": null,
+      "pred_boxes": 61,
+      "precision": 0.0,
+      "leak_rate": 0.0
+     },
+     "face": {
+      "gt_boxes": 0,
+      "recall@90": null,
+      "pred_boxes": 10250,
+      "precision": 0.0,
+      "leak_rate": 0.0
+     },
+     "person": {
+      "gt_boxes": 0,
+      "recall@90": null,
+      "pred_boxes": 6108,
+      "precision": 0.0,
+      "leak_rate": 0.0
+     },
+     "phone": {
+      "gt_boxes": 0,
+      "recall@90": null,
+      "pred_boxes": 706,
+      "precision": 0.0,
+      "leak_rate": 0.0
+     },
+     "redacted": {
+      "gt_boxes": 21,
+      "recall@90": 0.9523809523809523,
+      "pred_boxes": 0,
+      "precision": null,
+      "leak_rate": 0.0003654970760233918
+     },
+     "screen": {
+      "gt_boxes": 0,
+      "recall@90": null,
+      "pred_boxes": 47,
+      "precision": 0.0,
+      "leak_rate": 0.0
+     }
+    },
+    "recall@90": 0.9523809523809523,
+    "precision": 0.0
+   }
+  }
+ ],
+ "aggregate": {
+  "clips": 1,
+  "frames": 81990,
+  "autodetect_fps": 92.7,
+  "stage_share": {
+   "decode_detect_pass": 81.05,
+   "detect": 534.82,
+   "track": 180.19,
+   "assoc_other": 88.4
+  },
+  "accuracy": {
+   "labelled_frames": 2736,
+   "leak_rate": 0.0004,
+   "classes": {
+    "document": {
+     "gt_boxes": 0,
+     "recall@90": null,
+     "pred_boxes": 61,
+     "precision": 0.0,
+     "leak_rate": 0.0
+    },
+    "face": {
+     "gt_boxes": 0,
+     "recall@90": null,
+     "pred_boxes": 10250,
+     "precision": 0.0,
+     "leak_rate": 0.0
+    },
+    "person": {
+     "gt_boxes": 0,
+     "recall@90": null,
+     "pred_boxes": 6108,
+     "precision": 0.0,
+     "leak_rate": 0.0
+    },
+    "phone": {
+     "gt_boxes": 0,
+     "recall@90": null,
+     "pred_boxes": 706,
+     "precision": 0.0,
+     "leak_rate": 0.0
+    },
+    "redacted": {
+     "gt_boxes": 21,
+     "recall@90": 0.9524,
+     "pred_boxes": 0,
+     "precision": null,
+     "leak_rate": 0.0004
+    },
+    "screen": {
+     "gt_boxes": 0,
+     "recall@90": null,
+     "pred_boxes": 47,
+     "precision": 0.0,
+     "leak_rate": 0.0
+    }
+   }
+  }
+ }
+}

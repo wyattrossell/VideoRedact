@@ -7,6 +7,28 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Changed (video redaction rework: predictable, high-confidence, faster to review)
+- Auto-detect keeps only confident detections by default: a face must be detected 3+ times with
+  average confidence 0.7+, boxes taller than 60 % of the frame are rejected, whole-body "person"
+  boxes and the head-fallback heuristic are off. Phones/screens/documents need 2+ detections at
+  0.4+. On the 45-min reference clip this is 362 tracks instead of 2,313 (every kept face bin
+  was checked by eye; the dropped bins were mostly phones, lights, hands and car parts) and
+  detection runs 36 % faster. Untick "Only keep confident detections" in the Auto-detect dialog
+  for the old find-everything behaviour. Numbers: `bench/results/PRECISION_PROFILE.md`.
+- A manually drawn box is tracked forward and backward immediately with the last-used label,
+  shape and style (Shift+drag opens the dialog; Video menu toggles this). The tracker now holds
+  the box briefly after losing the object and bridges gaps of up to 2 s between re-acquisitions,
+  so a manual redaction no longer flickers: the reference notepad went from 17 fragments
+  covering 13 of 22 s to one span covering 22.7 s (the hand-redacted copy covers 23 s). It stops
+  once the object has been out of view for 8 s instead of searching to the end of the video
+  (which took 85 s and produced a false re-acquisition four minutes later); "keep searching to
+  the end" remains an option in the dialog.
+- Review keys: N / Shift+N next/previous redaction, Delete now undoable with Ctrl+Z (no
+  confirmation dialog), E enable/disable, X split track at the playhead, T track the selected
+  box from the playhead. Quick guide (F1) lists them all.
+- Settings migration (rev 2): the saved "head fallback" choice is reset to off once.
+- Audio redaction is untouched.
+
 ## [0.1.14] - 2026-10-28
 
 ### Fixed

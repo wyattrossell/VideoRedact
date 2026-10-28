@@ -243,6 +243,19 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-28 (evening): video redaction rework after Wyatt's feedback (auto-detect
+  over-redacts, objects become faces/persons; manual boxes must cover before and
+  after; hotkeys; audio untouched). Measured on the reference clip with contact
+  sheets per confidence bin: only face tracks with 3+ detections at avg conf >= 0.7
+  are reliably real; head-fallback ~1/3 real; single detections ~45 %. New default
+  "precise" profile (AutoDetectOptions / confirm_track): 2,313 -> 362 tracks, 126.5
+  vs 92.7 fps; recall profile kept as an option. Manual tracker: hold 12 frames
+  after loss, bridge gaps <= 2 s, stop 8 s after the object is gone (notepad: 17
+  fragments / 13 s -> 1 span / 22.7 s of the human's 23 s; no more 85 s searches
+  with false re-acquisitions). Drag = track immediately, Shift+drag = dialog.
+  Keys N/Shift+N, Ctrl+Z undo delete, E, X split, T. Settings rev 2 resets
+  detect_head. All in bench/results/PRECISION_PROFILE.md. Next: Wyatt's own
+  hand-redacted project files as ground truth for faces (see chat 2026-10-28).
 - 2026-10-28 (pm): v0.1.13 built (BBox float fix + inert emit_person_boxes /
   doc_model hooks) but NOT published: its Tools > "Check detection models" fails
   because the optional yolox_tiny_doc entry has no download source. v0.1.14

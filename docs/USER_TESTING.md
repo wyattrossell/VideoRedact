@@ -33,13 +33,17 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
 3. **Redact words**: click a word, or drag across a phrase, right-click → Redact. Search a
    name and use "Redact all matches". Try Audio → Suggest sensitive speech (PII) for phone
    numbers, dates of birth, addresses.
-4. **Draw a box** on something (drag on the picture); in the dialog that opens choose *Track this
-   object*. (Video → Track selected box re-tracks an existing box from the current frame.)
-   Watch the box follow the object, disappear when it leaves the frame, and come back when it
-   re-enters. Check the timeline lane shows the visible ranges.
-5. **Auto-detect** (Video → Auto-detect faces/screens/documents). Review the list in the
-   right-hand panel; use the review keys shown in the panel to step through tracks, delete
-   false ones, extend short ones.
+4. **Draw a box** on something (drag on the picture). It is tracked forward and backward right
+   away with the last label and style; the status bar says so. Shift+drag opens the dialog to
+   choose the label, shape, style and how long to keep looking once the object disappears
+   (default: stop after 8 s out of view). T re-tracks a selected box from the current frame.
+   Watch the box follow the object and check the timeline lane shows the covered range as one
+   piece, not flickering fragments.
+5. **Auto-detect** (Video → Auto-detect faces/screens/documents). The default keeps only
+   confident detections (a face must be seen 3+ times at 70 %+ confidence, no whole-body boxes);
+   expect far fewer false hits than before, and tell us about any real face it now misses.
+   Review the list in the right-hand panel with the keys: N / Shift+N next/previous, Delete
+   (Ctrl+Z undoes), E disable, X split at the playhead, [ ] trim, = extend.
 6. **Styles**: change the project default (toolbar) and one item's style (panel). Black box is
    the default and the recommended one; pixelate and heavy blur are there for footage where a
    solid box hides context.

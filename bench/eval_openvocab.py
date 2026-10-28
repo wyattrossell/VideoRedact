@@ -37,7 +37,7 @@ def main() -> None:
     ap.add_argument("--thr", type=float, default=0.10)
     ap.add_argument("--size", type=int, default=0, help="resize longer side before inference (0 = model default)")
     ap.add_argument("--out", default="bench/reference/preview_openvocab")
-    ap.add_argument("--device", default="cpu", help="cpu or cuda (C:\dev\venv-train has the CUDA torch)")
+    ap.add_argument("--device", default="cpu", help="cpu or cuda (C:/dev/venv-train has the CUDA torch)")
     ap.add_argument("--enhance", action="store_true",
                     help="CLAHE + gamma 0.6 before inference (does the teacher see dark paper better?)")
     a = ap.parse_args()

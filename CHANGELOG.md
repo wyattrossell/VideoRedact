@@ -7,6 +7,8 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-10-28
+
 ### Added
 - Auto-detect option `emit_person_boxes` (detector config): whole-body "person" boxes came out of
   the head fallback even when only faces were requested. Default unchanged (`true`) pending review,

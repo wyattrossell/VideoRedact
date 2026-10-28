@@ -243,6 +243,15 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-28 (pm): v0.1.13 built (BBox float fix + inert emit_person_boxes /
+  doc_model hooks) but NOT published: its Tools > "Check detection models" fails
+  because the optional yolox_tiny_doc entry has no download source. v0.1.14
+  fixes that (required_models() skips absent optional models; regression test),
+  built, installed per-user, self-test ALL OK with 0 network attempts. Release
+  commit + tag pushed; the GitHub release (publish_release.ps1) is still to be
+  run by Wyatt. Installed copy on this laptop: 0.1.14. Gotcha: a silent install
+  exits 5 ("file in use") while the app is open; check Get-Process VideoRedact
+  first, worker processes carry --multiprocessing-fork.
 - 2026-10-28: Reference-pair analysis finished (bench/results/REFERENCE_TANYARD.md).
   The hand-redacted copy covers one notepad for 23 s and nothing else; we cover
   20/21 of those boxes only through accidental whole-body person boxes and add

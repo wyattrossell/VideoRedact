@@ -228,8 +228,12 @@ class AutoDetectDialog(QDialog):
         self.carry = QCheckBox("Follow each object between detections with the tracker (covers turned/blurred faces)")
         self.carry.setChecked(bool(settings.get("detect_carry", True)))
         f.addRow("", self.carry)
-        self.head = QCheckBox("Head fallback: redact the head of every detected person even when no face is found")
-        self.head.setChecked(bool(settings.get("detect_head", True)))
+        self.precise = QCheckBox("Only keep confident detections (recommended): a face must be seen 3+ times at 70 %+ "
+                                 "confidence, no whole-body boxes. Off = find everything and delete the false hits yourself.")
+        self.precise.setChecked(bool(settings.get("detect_precise", True)))
+        f.addRow("", self.precise)
+        self.head = QCheckBox("Head fallback: redact the head of every detected person even when no face is found (about 1 in 3 is real)")
+        self.head.setChecked(bool(settings.get("detect_head", False)))
         f.addRow("", self.head)
         self.ms = QCheckBox("Small / distant / profile faces: multi-scale detection (recommended, ~2x slower)")
         self.ms.setChecked(bool(settings.get("detect_multiscale", True)))
@@ -515,12 +519,21 @@ class NewBoxDialog(QDialog):
         self.backward = QCheckBox("Also look backward from here (covers the object before this frame)")
         self.backward.setChecked(bool(settings.get("track_backward", True)))
         f2.addRow("", self.backward)
+        self.gone = QComboBox()
+        self.gone.addItem("Stop once it has been out of view for 8 s (recommended)", 8.0)
+        self.gone.addItem("Stop once it has been out of view for 30 s", 30.0)
+        self.gone.addItem("Keep searching to the end of the video (it leaves and comes back)", -1.0)
+        cur_gone = -1.0 if settings.get("track_search_to_end") else float(settings.get("track_lost_limit_s", 8.0))
+        self.gone.setCurrentIndex({8.0: 0, 30.0: 1, -1.0: 2}.get(cur_gone, 0))
+        self.gone.setToolTip("Searching for a lost object is slow and can latch onto something else minutes later; "
+                             "stopping soon after it disappears is faster and safer. Draw another box if it returns.")
+        f2.addRow("If it disappears", self.gone)
         self.stop_at = QDoubleSpinBox()
         self.stop_at.setRange(0, duration)
         self.stop_at.setDecimals(1)
         self.stop_at.setValue(duration)
         self.stop_at.setSuffix(" s")
-        self.stop_at.setToolTip("Stop tracking at this time. Shorter ranges finish sooner.")
+        self.stop_at.setToolTip("Never track past this time.")
         f2.addRow("Stop at", self.stop_at)
         lay.addWidget(g2)
 
@@ -542,6 +555,15 @@ class NewBoxDialog(QDialog):
     def track_end_time(self) -> float:
         return float(self.stop_at.value())
 
+    @property
+    def search_to_end(self) -> bool:
+        return float(self.gone.currentData()) < 0
+
+    @property
+    def lost_limit_s(self) -> float:
+        v = float(self.gone.currentData())
+        return v if v > 0 else float(self.settings.get("track_lost_limit_s", 8.0))
+
     def mode(self) -> str:
         if self.r_track.isChecked():
             return "track"
@@ -551,7 +573,12 @@ class NewBoxDialog(QDialog):
 
     def accept(self) -> None:
         self.settings["last_box_label"] = self.label.currentText().strip() or "other"
+        self.settings["last_box_shape"] = self.shape.currentData()
+        self.settings["last_box_style"] = self.style.currentData()
         self.settings["track_step"] = self.track_step
         self.settings["track_backward"] = self.track_backward
+        self.settings["track_search_to_end"] = self.search_to_end
+        if not self.search_to_end:
+            self.settings["track_lost_limit_s"] = self.lost_limit_s
         self.settings.save()
         super().accept()

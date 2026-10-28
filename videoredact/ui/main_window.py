@@ -161,18 +161,26 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu("&Video")
         self.a_detect = act("&Auto-detect faces / screens / documents…", self.auto_detect)
-        self.a_track = act("&Track selected box", self.track_selected)
+        self.a_track = act("&Track selected box (forward and backward)", self.track_selected, "T")
+        self.a_quick = act("Track every new box immediately (Shift+drag asks first)", self.toggle_quick_box, checkable=True)
+        self.a_quick.setChecked(bool(settings.get("quick_box", True)))
         self.a_clear_auto = act("Remove all a&utomatic detections", self.clear_auto)
         self.a_delete = act("&Delete selected redaction", self.delete_selected, "Delete")
+        self.a_undo = act("&Undo delete", self.undo_delete, "Ctrl+Z")
         self.a_trim_start = act("Trim track start to playhead", lambda: self.trim_selected("start"), "[")
         self.a_trim_end = act("Trim track end to playhead", lambda: self.trim_selected("end"), "]")
         self.a_extend = act("Extend track to playhead", self.extend_selected, "=")
+        self.a_split = act("Split track at playhead", self.split_selected, "X")
+        self.a_toggle = act("Enable / disable selected track", self.toggle_selected, "E")
+        self.a_next = act("Next redaction", lambda: self.panel.step(1), "N")
+        self.a_prev = act("Previous redaction", lambda: self.panel.step(-1), "Shift+N")
         self.a_next_flag = act("Next flagged track", lambda: self.panel.next_flagged(1), "F")
         self.a_prev_flag = act("Previous flagged track", lambda: self.panel.next_flagged(-1), "Shift+F")
-        for a in (self.a_detect, self.a_track, self.a_clear_auto, self.a_delete):
+        for a in (self.a_detect, self.a_track, self.a_quick, self.a_clear_auto, self.a_delete, self.a_undo):
             m.addAction(a)
         m.addSeparator()
-        for a in (self.a_trim_start, self.a_trim_end, self.a_extend, self.a_next_flag, self.a_prev_flag):
+        for a in (self.a_trim_start, self.a_trim_end, self.a_extend, self.a_split, self.a_toggle,
+                  self.a_next, self.a_prev, self.a_next_flag, self.a_prev_flag):
             m.addAction(a)
 
         m = mb.addMenu("&Tools")
@@ -498,16 +506,32 @@ class MainWindow(QMainWindow):
             self.project.remove_audio_redaction(rid)
         else:
             t = next((x for x in self.project.video_tracks if x.id == rid), None)
-            # no undo yet: ask before throwing away more than a second of tracked/detected frames
-            if confirm and t is not None and t.total_frames() > max(1.0, self.fps) and QMessageBox.question(
-                    self, "Delete redaction",
-                    f"Delete the '{t.label}' track covering {t.total_frames()} frames? This cannot be undone "
-                    "(disable it with its checkbox instead to keep it in the project).",
-                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
-                return
+            if t is not None:
+                # deletes are undoable (Ctrl+Z) so reviewing is one key per false hit, no dialog
+                self._push_undo(t)
             self.project.remove_video_track(rid)
             self.video.selected_track_id = None
+            if t is not None:
+                self.statusBar().showMessage(f"Deleted '{t.label}' track ({t.total_frames()} frames). Ctrl+Z undoes.", 6000)
         self._project_changed()
+
+    def _push_undo(self, t: VideoTrack) -> None:
+        st = self.__dict__.setdefault("_undo_stack", [])
+        st.append(t)
+        del st[:-20]
+
+    def undo_delete(self) -> None:
+        st = self.__dict__.get("_undo_stack") or []
+        if not st or not self.project:
+            return
+        t = st.pop()
+        if self.project.get_track(t.id) is not None:
+            return
+        self.project.add_video_track(t)
+        self.project.log("video_track_restored", f"{t.label} frames {t.first_frame()}-{t.last_frame()}")
+        self._project_changed()
+        self._select("video", t.id)
+        self.statusBar().showMessage(f"Restored '{t.label}' track.", 4000)
 
     # ----------------------------------------------------------- audio ops
     def redact_words(self, words: list[Word], source: str = "manual", reason: str = "") -> None:
@@ -655,6 +679,18 @@ class MainWindow(QMainWindow):
             return
         self.player.pause()
         frame = self.current_frame()
+        quick = bool(settings.get("quick_box", True)) and not (QApplication.keyboardModifiers() & Qt.ShiftModifier)
+        if quick:
+            # one gesture: drag a box, it is tracked forward and backward right away with the
+            # label/shape/style used last time (Shift+drag opens the dialog instead)
+            label = settings.get("last_box_label", "face") or "other"
+            track = VideoTrack(label=label, style=as_enum(VideoStyle, settings.get("last_box_style")),
+                               shape=as_enum(Shape, settings.get("last_box_shape")) or (Shape.ELLIPSE if label == "face" else Shape.RECT),
+                               pad=settings["video_pad"], source="manual")
+            self._run_tracking(frame, bbox, label, track)
+            self.statusBar().showMessage(f"Tracking '{label}' forward and backward from here. "
+                                         "Shift+drag to choose a different label or options; T re-tracks a selected box.", 8000)
+            return
         dlg = NewBoxDialog(settings, self.current_time(), self.project.media.duration, self)
         if dlg.exec() != QDialog.Accepted:
             return
@@ -680,10 +716,12 @@ class MainWindow(QMainWindow):
             self._select("video", track.id)
         else:
             end_frame = min(self.project.media.frame_count - 1, int(round(dlg.track_end_time * self.fps))) if self.project.media.frame_count else None
-            self._run_tracking(frame, bbox, label, track, step=dlg.track_step, backward=dlg.track_backward, end_frame=end_frame)
+            self._run_tracking(frame, bbox, label, track, step=dlg.track_step, backward=dlg.track_backward, end_frame=end_frame,
+                               lost_limit_s=dlg.lost_limit_s, search_to_end=dlg.search_to_end)
 
     def _run_tracking(self, frame: int, bbox: BBox, label: str, proto: VideoTrack, replace_id: Optional[str] = None,
-                      step: Optional[int] = None, backward: Optional[bool] = None, end_frame: Optional[int] = None) -> None:
+                      step: Optional[int] = None, backward: Optional[bool] = None, end_frame: Optional[int] = None,
+                      lost_limit_s: Optional[float] = None, search_to_end: Optional[bool] = None) -> None:
         """Track in the background. The track is added immediately with the drawn box and
         fills in live as the tracker advances, so the UI stays usable."""
         proj = self.project
@@ -694,7 +732,9 @@ class MainWindow(QMainWindow):
         from videoredact.vision.tracker import TrackOptions
         opts = TrackOptions(step=int(step or settings.get("track_step", 2)),
                             backward=bool(settings.get("track_backward", True) if backward is None else backward),
-                            end_frame=end_frame, tracker=settings.get("tracker", "vit"))
+                            end_frame=end_frame, tracker=settings.get("tracker", "vit"),
+                            lost_limit_s=float(settings.get("track_lost_limit_s", 8.0) if lost_limit_s is None else lost_limit_s),
+                            search_to_end=bool(settings.get("track_search_to_end", False) if search_to_end is None else search_to_end))
         # live placeholder track
         live = VideoTrack(label=label, style=proto.style, shape=proto.shape, pad=proto.pad, source="tracked",
                           note="tracking in progress…")
@@ -779,6 +819,37 @@ class MainWindow(QMainWindow):
         self.project.log("track_extended", f"{t.label} -> frame {f}")
         self._project_changed()
 
+    def split_selected(self) -> None:
+        """X: cut the selected track at the playhead into two tracks (delete the half that drifted)."""
+        t = self._selected_track()
+        if not t:
+            return
+        f = self.current_frame()
+        tail = t.split_at(f)
+        if tail is None:
+            self.statusBar().showMessage("Move the playhead inside the track (not at its first frame) to split it.", 4000)
+            return
+        self.project.add_video_track(tail)
+        self.project.log("track_split", f"{t.label} at frame {f}")
+        self._project_changed()
+        self._select("video", tail.id)
+
+    def toggle_selected(self) -> None:
+        """E: keep the track in the project but do not render it (or turn it back on)."""
+        t = self._selected_track()
+        if not t:
+            return
+        t.enabled = not t.enabled
+        self.project.log(f"video_redaction_{'enabled' if t.enabled else 'disabled'}", t.id)
+        self._project_changed()
+        self.statusBar().showMessage(f"'{t.label}' track {'enabled' if t.enabled else 'disabled'}.", 3000)
+
+    def toggle_quick_box(self) -> None:
+        settings["quick_box"] = self.a_quick.isChecked()
+        settings.save()
+        self.statusBar().showMessage("New boxes are tracked immediately with the last settings; Shift+drag asks first."
+                                     if self.a_quick.isChecked() else "Each new box asks what it is before tracking.", 6000)
+
     def track_selected(self) -> None:
         kind, rid = self.panel.current()
         tid = rid if kind == "video" else self.video.selected_track_id
@@ -824,6 +895,8 @@ class MainWindow(QMainWindow):
                                  threads=settings["cpu_threads"])
         replace = dlg.replace.isChecked()
 
+        opts.apply_profile(dlg.precise.isChecked())
+        settings["detect_precise"] = dlg.precise.isChecked()
         opts.face_model = settings.get("face_detector", "yunet")
         opts.carry = dlg.carry.isChecked()
         opts.tiles = dlg.tiles.isChecked()
@@ -1123,14 +1196,19 @@ class MainWindow(QMainWindow):
 <b>2. Audio:</b> Audio ▸ Transcribe. In the Transcript tab select words, right-click ▸ Redact,
 or ▸ Redact every occurrence. Use the search box to find a word everywhere.
 Audio ▸ Suggest sensitive speech finds phone numbers, names after cues, addresses, dates of birth.<br>
-<b>3. Video:</b> Video ▸ Auto-detect finds faces, screens and documents. Drag a box on the video around
-anything else (a license plate, a tattoo, a notepad) and choose <i>Track this object</i>: it is followed
-forward and backward and re-acquired when it leaves and re-enters the frame.<br>
+<b>3. Video:</b> Video ▸ Auto-detect finds faces, screens, documents and phones. By default it keeps only confident
+detections (a face must be seen 3+ times at 70 %+ confidence); untick that option to find everything and delete the
+false hits yourself. Drag a box on the video around anything else (a license plate, a tattoo, a notepad): it is tracked
+forward and backward immediately with the last label and style, and stops once the object has been out of view for 8 s.
+Shift+drag asks for the label, style and tracking options first.<br>
 <b>4. Review:</b> Play with <i>Preview redactions</i> on: you see the boxes and hear the beep/silence exactly as exported.
-Drag a box to fix its position: that adds a keyframe. Delete false hits in the Redactions tab.<br>
+N / Shift+N step through the redactions, Delete removes one (Ctrl+Z brings it back), E disables it without deleting,
+X splits a track at the playhead, [ ] trim it, = extends it, T re-tracks a selected box from the playhead.
+Drag a box to fix its position: that adds a keyframe.<br>
 <b>5. Export</b> (Ctrl+E): writes the redacted file plus a PDF/CSV report with SHA-256 hashes and the project file.<br><br>
-<b>Keys:</b> Space play/pause · ←/→ frame step (Shift: 1 s) · [ ] trim track start/end to playhead · = extend track to playhead ·
-F / Shift+F next/previous flagged track · Delete remove selected · Ctrl+R redact audio range at playhead · Ctrl+F find word ·
+<b>Keys:</b> Space play/pause · ←/→ frame step (Shift: 1 s) · N / Shift+N next/previous redaction · F / Shift+F next/previous
+flagged track · Delete remove selected · Ctrl+Z undo delete · E enable/disable · X split at playhead · [ ] trim start/end to
+playhead · = extend to playhead · T track selected box · Ctrl+R redact audio range at playhead · Ctrl+F find word ·
 Ctrl+E export · Ctrl+B batch · Ctrl+wheel zoom timeline · double-click video to fit.
 """)
 

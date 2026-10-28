@@ -223,6 +223,19 @@ class RedactionPanel(QWidget):
                 self._on_double(it, 1)
                 return
 
+    def step(self, direction: int = 1) -> None:
+        """Select the next/previous video redaction (wrapping) and seek to its start."""
+        if not self.project or self.video_root is None:
+            return
+        n = self.video_root.childCount()
+        if n == 0:
+            return
+        cur = self.tree.currentItem()
+        start = self.video_root.indexOfChild(cur) if cur is not None and cur.parent() is self.video_root else -1
+        it = self.video_root.child((start + direction) % n)
+        self.tree.setCurrentItem(it)
+        self._on_double(it, 1)
+
     def _track(self) -> None:
         kind, rid = self.current()
         if kind == "video":

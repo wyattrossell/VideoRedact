@@ -36,7 +36,8 @@ PRETRAINED = {
 }
 
 
-def prepare(frames: Path, labels: Path, out: Path, val_frac: float = 0.15, seed: int = 7, min_box: int = 0) -> None:
+def prepare(frames: Path, labels: Path, out: Path, val_frac: float = 0.15, seed: int = 7, min_box: int = 0,
+            val_clips: list[str] | None = None) -> None:
     import cv2
     classes = CLASSES
     cf = labels / "classes.txt"
@@ -55,7 +56,11 @@ def prepare(frames: Path, labels: Path, out: Path, val_frac: float = 0.15, seed:
     # split by clip so val clips are unseen
     clips = sorted({i[0].parent.name for i in items})
     random.Random(seed).shuffle(clips)
-    val_clips = set(clips[: max(1, int(len(clips) * val_frac))])
+    if val_clips:   # explicit hold-out (e.g. the reference clip), matched by substring
+        val_clips = {c for c in clips if any(v.lower() in c.lower() for v in val_clips)}
+    else:
+        val_clips = set(clips[: max(1, int(len(clips) * val_frac))])
+    print("val clips:", sorted(val_clips))
     # YOLOX 0.3 hard-codes the image folder names train2017 / val2017 in its COCO loader
     for split in ("train2017", "val2017"):
         (out / split).mkdir(parents=True, exist_ok=True)
@@ -152,13 +157,13 @@ def export(ckpt: Path, model: str, out: Path, data: Path = Path("train/data")) -
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("prepare"); p.add_argument("--frames", default="bench/frames"); p.add_argument("--labels", default="bench/labels"); p.add_argument("--out", default="train/data"); p.add_argument("--min-box", type=int, default=0)
+    p = sub.add_parser("prepare"); p.add_argument("--frames", default="bench/frames"); p.add_argument("--labels", default="bench/labels"); p.add_argument("--out", default="train/data"); p.add_argument("--min-box", type=int, default=0); p.add_argument("--val-clips", nargs="*", default=None, help="hold out clips whose name contains any of these")
     x = sub.add_parser("exp", help="only write the experiment file (for train/train_loop.py)"); x.add_argument("--data", default="train/data"); x.add_argument("--model", default="yolox_tiny"); x.add_argument("--size", type=int, default=0); x.add_argument("--epochs", type=int, default=30); x.add_argument("--batch", type=int, default=8)
     t = sub.add_parser("train"); t.add_argument("--data", default="train/data"); t.add_argument("--model", default="yolox_tiny", choices=list(PRETRAINED)); t.add_argument("--epochs", type=int, default=60); t.add_argument("--batch", type=int, default=16); t.add_argument("--devices", type=int, default=1)
     e = sub.add_parser("export"); e.add_argument("--ckpt", required=True); e.add_argument("--model", default="yolox_tiny"); e.add_argument("--out", default="models/yolox_tiny_vr.onnx"); e.add_argument("--data", default="train/data")
     a = ap.parse_args()
     if a.cmd == "prepare":
-        prepare(Path(a.frames), Path(a.labels), Path(a.out), min_box=a.min_box)
+        prepare(Path(a.frames), Path(a.labels), Path(a.out), min_box=a.min_box, val_clips=a.val_clips)
     elif a.cmd == "exp":
         print(write_exp(Path(a.data), a.model, a.epochs, a.batch, Path("train/runs"), a.size))
     elif a.cmd == "train":

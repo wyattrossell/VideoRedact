@@ -131,8 +131,9 @@ def main() -> None:
             step += 1
             if (i + 1) % 100 == 0:
                 el = time.time() - t_ep
-                print(f"epoch {epoch + 1}/{a.epochs} iter {i + 1}/{iters} loss {run_loss / (i + 1):.2f} lr {lr:.5f} "
-                      f"{el / (i + 1):.2f}s/it", flush=True)
+                parts = " ".join(f"{k[:-5]}={float(v):.2f}" for k, v in outputs.items() if k.endswith("_loss") and k != "total_loss")
+                print(f"epoch {epoch + 1}/{a.epochs} iter {i + 1}/{iters} loss {run_loss / (i + 1):.2f} [{parts} fg={float(outputs.get('num_fg', 0)):.1f}] "
+                      f"lr {lr:.5f} {el / (i + 1):.2f}s/it", flush=True)
         print(f"epoch {epoch + 1} done in {(time.time() - t_ep) / 60:.1f} min, mean loss {run_loss / max(1, iters):.3f}", flush=True)
         torch.save({"model": ema.ema.state_dict(), "epoch": epoch}, out / "latest_ckpt.pth")
         if (epoch + 1) % a.eval_every == 0 or epoch + 1 == a.epochs:

@@ -50,13 +50,15 @@ DETECTOR_LABELS = {"face", "screen", "document", "phone", "person"}
 TARGET_OBJ_PX = 110          # desired object size on the work frame
 MIN_WORK_SIDE = 256
 REINIT_IOU = 0.85            # re-create the tracker only if a correction moved the box this much
-VIT_MIN_SCORE = 0.30         # ViTTrack confidence below this counts as a failed update
+VIT_MIN_SCORE = 0.30         # ViTTrack confidence below this counts as a failed update (classic engine)
+VIT_RAW_THRESHOLD = 0.05     # OpenCV-internal failure cut for ViTTrack (default 0.20); see make_tracker
 
 
 @dataclass
 class TrackOptions:
+    engine: str = "anchored"        # anchored (detector classes -> vision/anchored.py, the rest -> this loop) | anchored-all | classic
     step: int = 2                   # process every N-th frame
-    work_side: int = 512            # longest side of the working frame
+    work_side: int = 512            # longest side of the working frame (classic engine only)
     tracker: str = "vit"            # vit (default, scale-adaptive) | kcf (fastest) | csrt (slow)
     backward: bool = True
     lost_limit_s: float = 8.0       # stop (either direction) once the object has been gone this long
@@ -112,6 +114,10 @@ def make_tracker(kind: str = "vit"):
             return pool.pop()
         p = cv2.TrackerVit_Params()
         p.net = _VIT_PATH
+        # OpenCV's update() reports failure below 0.20 and then returns no box at all; the engines
+        # apply their own score hysteresis (VIT_MIN_SCORE here, S_WEAK in anchored.py), so keep the
+        # box coming and let them decide
+        p.tracking_score_threshold = VIT_RAW_THRESHOLD
         return cv2.TrackerVit_create(p)
     if kind == "csrt" and hasattr(cv2, "TrackerCSRT_create"):
         return cv2.TrackerCSRT_create()
@@ -425,6 +431,21 @@ class ObjectTracker:
               progress: Optional[ProgressCB] = None, cancel: Optional[CancelCB] = None,
               on_update: Optional[UpdateCB] = None) -> VideoTrack:
         o = self.o
+        # anchored: objects with a class detector (faces, phones, screens, documents, plates) go to the
+        # detector-anchored engine, which covered 96.7 % of confident faces against 86.1 % here; objects
+        # without one (tattoos, notepads, "other") stay on this loop, which measured the same coverage as
+        # the anchored no-detector path with a quarter of its drift (bench/results/TRACKING_V2.md).
+        # anchored-all: the anchored engine for everything (its colour search re-acquires a flat object
+        # that left the frame; this loop does not).
+        use_anchored = o.engine == "anchored-all" or (o.engine == "anchored" and self.detector is not None and label is not None)
+        if use_anchored and type(self) is ObjectTracker:
+            from .anchored import AnchoredTracker
+            identity = None
+            if label == "face" and self.detector is not None:
+                from .identity import FaceIdentity
+                identity = FaceIdentity.try_create()
+            return AnchoredTracker(self.reader, self.detector, o, identity=identity).track(
+                start_frame, bbox, label=label, progress=progress, cancel=cancel, on_update=on_update)
         self._on_update = on_update
         reader = self.reader
         last = o.end_frame if o.end_frame is not None else max(0, reader.frame_count - 1)
@@ -477,10 +498,11 @@ class ObjectTracker:
         return track
 
 
-def bridge_spans(track: VideoTrack, max_gap: int) -> VideoTrack:
+def bridge_spans(track: VideoTrack, max_gap: int, near=None) -> VideoTrack:
     """Join consecutive spans of one tracked object whose gap is <= max_gap frames and whose
     boundary boxes are near each other (same object, briefly lost); the gap is then covered by
-    interpolation between the two boundary keyframes. In place; returns the track."""
+    interpolation between the two boundary keyframes. In place; returns the track.
+    `near(a, b, gap)` overrides the default nearness test."""
     if max_gap <= 0 or len(track.spans) < 2:
         return track
     spans = sorted(track.spans, key=lambda s: s.start_frame)
@@ -489,7 +511,8 @@ def bridge_spans(track: VideoTrack, max_gap: int) -> VideoTrack:
         prev = out[-1]
         gap = s.start_frame - prev.end_frame
         a, b = prev.bbox_at(prev.end_frame), s.bbox_at(s.start_frame)
-        if 0 < gap <= max_gap and a is not None and b is not None and _near_boxes(a, b):
+        close = (near(a, b, gap) if near else _near_boxes(a, b)) if (a is not None and b is not None) else False
+        if 0 < gap <= max_gap and close:
             prev.keyframes.update(s.keyframes)
             prev.end_frame = max(prev.end_frame, s.end_frame)
         else:

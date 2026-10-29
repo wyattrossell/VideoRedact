@@ -127,6 +127,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "detect_precise": True,         # only keep confident detections (AutoDetectOptions defaults); False = recall profile
     "track_lost_limit_s": 8.0,      # manual tracking stops once the object has been gone this long
     "track_search_to_end": False,   # manual tracking keeps searching to the end (object leaves and returns)
+    "track_engine": "anchored",     # anchored (detector classes: full-res, detector-anchored, appearance bank; others: classic loop) | anchored-all | classic
     "quick_box": True,              # a drawn box is tracked immediately with the last label/shape/style; Shift+drag asks
     "last_box_label": "face",
     "last_box_shape": None,         # None = ellipse for faces, rectangle otherwise

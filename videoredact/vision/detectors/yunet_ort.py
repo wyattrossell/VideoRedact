@@ -52,14 +52,21 @@ class YuNetORTDetector(PerFrameDetector):
     labels = {"face"}
 
     def __init__(self, score_thr: float = 0.5, nms_thr: float = 0.3, max_side: int = 1280, threads: int = 0,
-                 top_k: int = 5000):
+                 top_k: int = 5000, prefer_openvino: bool = True):
+        """prefer_openvino=False keeps the model on the CPU runtime: the Intel GPU path recompiles
+        for every new input shape (~450 ms), which is fine for whole frames of one size and
+        hopeless for the varying crops the anchored tracker feeds it."""
         from ..runner import make_runner
-        self.out_names = [f"{k}_{s}" for s in STRIDES for k in ("cls", "obj", "bbox")]
-        self.runner = make_runner(_dynamic_model_path(), threads, outputs=self.out_names, nhwc_u8=True)
+        self.out_names = [f"{k}_{s}" for s in STRIDES for k in ("cls", "obj", "bbox", "kps")]
+        self.runner = make_runner(_dynamic_model_path(), threads, outputs=self.out_names, nhwc_u8=True,
+                                  prefer_openvino=prefer_openvino)
         self.engine = self.runner.engine
         self.score_thr, self.nms_thr, self.max_side, self.top_k = score_thr, nms_thr, max_side, top_k
         self.name = f"yunet_ort{max_side}"
         self._grid: dict = {}
+
+    def set_score_threshold(self, thr: float) -> None:
+        self.score_thr = float(thr)
 
     def _grids(self, h: int, w: int):
         key = (h, w)
@@ -89,7 +96,7 @@ class YuNetORTDetector(PerFrameDetector):
             blob[0] = img.transpose(2, 0, 1)
         outs = dict(zip(self.out_names, self.runner.run(blob)))
         grids = self._grids(ph, pw)
-        boxes, scores = [], []
+        boxes, scores, kps = [], [], []
         for s in STRIDES:
             cls = outs[f"cls_{s}"][0, :, 0]
             obj = outs[f"obj_{s}"][0, :, 0]
@@ -105,16 +112,25 @@ class YuNetORTDetector(PerFrameDetector):
             bh = np.exp(bb[:, 3]) * s
             boxes.append(np.stack([cx - bw / 2, cy - bh / 2, bw, bh], axis=1))
             scores.append(sc[keep])
+            # 5 landmarks as (dx, dy) offsets from the grid cell, like the box centre
+            k = outs[f"kps_{s}"][0][keep].reshape(-1, 5, 2).astype(np.float32)
+            k[:, :, 0] = (xs[keep][:, None] + k[:, :, 0]) * s
+            k[:, :, 1] = (ys[keep][:, None] + k[:, :, 1]) * s
+            kps.append(k)
         if not boxes:
             return []
         boxes = np.concatenate(boxes)
         scores = np.concatenate(scores)
+        kps = np.concatenate(kps)
         if len(scores) > self.top_k:
             order = np.argsort(-scores)[: self.top_k]
-            boxes, scores = boxes[order], scores[order]
+            boxes, scores, kps = boxes[order], scores[order], kps[order]
         idx = cv2.dnn.NMSBoxes(boxes.tolist(), scores.astype(float).tolist(), self.score_thr, self.nms_thr)
         out = []
+        norm = np.array([W, H], dtype=np.float32)
         for i in np.array(idx).reshape(-1):
             x, y, bw, bh = boxes[i] / scale
-            out.append(Detection(BBox.from_pixels(x, y, x + bw, y + bh, W, H), "face", float(scores[i]), self.name))
+            lm = (kps[i] / scale) / norm
+            out.append(Detection(BBox.from_pixels(x, y, x + bw, y + bh, W, H), "face", float(scores[i]), self.name,
+                                 landmarks=lm))
         return out

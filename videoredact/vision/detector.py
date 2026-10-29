@@ -45,6 +45,8 @@ class Detection:
     bbox: BBox
     label: str
     score: float
+    source: str = ""
+    landmarks: Optional[np.ndarray] = None   # faces: 5 x (x, y) normalized to the frame (YuNet)
 
 
 def _nms(boxes_xyxy: np.ndarray, scores: np.ndarray, iou_thr: float) -> list[int]:
@@ -62,6 +64,9 @@ class FaceDetector:
         self.max_side = max_side
         self._size = (0, 0)
 
+    def set_score_threshold(self, thr: float) -> None:
+        self.det.setScoreThreshold(float(thr))
+
     def detect(self, frame: np.ndarray) -> list[Detection]:
         H, W = frame.shape[:2]
         scale = min(1.0, self.max_side / max(H, W))
@@ -76,7 +81,10 @@ class FaceDetector:
             return out
         for f in faces:
             x, y, bw, bh, score = float(f[0]), float(f[1]), float(f[2]), float(f[3]), float(f[-1])
-            out.append(Detection(BBox.from_pixels(x, y, x + bw, y + bh, w, h), "face", score))
+            lm = None
+            if len(f) >= 14:   # YuNet rows: box, 5 landmarks (x, y), score
+                lm = np.asarray(f[4:14], dtype=np.float32).reshape(5, 2) / np.array([w, h], dtype=np.float32)
+            out.append(Detection(BBox.from_pixels(x, y, x + bw, y + bh, w, h), "face", score, landmarks=lm))
         return out
 
 
@@ -134,6 +142,9 @@ class CenterFaceDetector:
         self.inp = self.sess.get_inputs()[0].name
         self.score_thr = score_thr
         self.nms_thr = nms_thr
+
+    def set_score_threshold(self, thr: float) -> None:
+        self.score_thr = float(thr)
         self.max_side = max_side
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
@@ -182,6 +193,9 @@ class ObjectDetector:
         self.nms_thr = nms_thr
         self.labels = labels  # None = all mapped labels
         self._grids, self._strides = self._make_grids(self.size)
+
+    def set_score_threshold(self, thr: float) -> None:
+        self.conf_thr = float(thr)
 
     @staticmethod
     def _make_grids(size: int):
@@ -234,6 +248,21 @@ class ObjectDetector:
         return dets
 
 
+class _SingleFrame:
+    """Adapts a batch `Detector` (detectors/base.py) to this module's one-frame `detect`."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def detect(self, frame: np.ndarray) -> list[Detection]:
+        return [Detection(d.bbox, d.label, d.score, getattr(d, "source", ""), getattr(d, "landmarks", None))
+                for d in self.inner.detect_one(frame)]
+
+    def set_score_threshold(self, thr: float) -> None:
+        if hasattr(self.inner, "set_score_threshold"):
+            self.inner.set_score_threshold(thr)
+
+
 class CombinedDetector:
     def __init__(self, labels: list[str], face_conf: float = 0.5, obj_conf: float = 0.35,
                  obj_model: str = "yolox_tiny", threads: int = 0, face_model: str = "yunet"):
@@ -242,10 +271,26 @@ class CombinedDetector:
         if "face" in self.labels:
             if face_model == "centerface":
                 self.face = CenterFaceDetector(min(face_conf, 0.5), threads=threads)
-            else:
+            elif face_model == "yunet_cv":
                 self.face = FaceDetector(face_conf, max_side=1280)
+            else:
+                # ONNX Runtime YuNet on the CPU: 3.5x faster than OpenCV DNN, same weights, landmarks
+                # included; CPU because the tracker feeds crops of varying size (see yunet_ort.py)
+                try:
+                    from .detectors.yunet_ort import YuNetORTDetector
+                    self.face = _SingleFrame(YuNetORTDetector(face_conf, max_side=1280, threads=threads,
+                                                              prefer_openvino=False))
+                except Exception:  # noqa: BLE001  (onnx missing / model conversion failed)
+                    self.face = FaceDetector(face_conf, max_side=1280)
         obj_labels = self.labels - {"face"}
         self.obj = ObjectDetector(obj_model, obj_conf, labels=obj_labels, threads=threads) if obj_labels else None
+
+    def set_score_threshold(self, thr: float) -> None:
+        """Lower (or raise) the score cut of every member; the anchored tracker uses a low cut
+        because its region, size and identity gates reject what a threshold would."""
+        for m in (self.face, self.obj):
+            if m is not None and hasattr(m, "set_score_threshold"):
+                m.set_score_threshold(thr)
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
         dets: list[Detection] = []

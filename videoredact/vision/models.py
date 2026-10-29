@@ -48,6 +48,10 @@ MODELS: dict[str, ModelSpec] = {
         "yolox_tiny", "yolox_tiny.onnx",
         "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",
         "Apache-2.0", "COCO object detector, faster/less accurate (416px)", 15_000_000),
+    "sface": ModelSpec(
+        "sface", "face_recognition_sface_2021dec.onnx",
+        "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+        "Apache-2.0", "Face identity embedding: same-person check when a tracked face is re-acquired", 30_000_000),
     # Optional, no download source: produced by train/finetune_yolox.py from our own pseudo-labelled
     # footage (train/pseudolabel_openvocab.py). Bundled when present in models/; skipped when absent.
     "yolox_tiny_doc": ModelSpec(

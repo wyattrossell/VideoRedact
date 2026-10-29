@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Iterable, Optional, Sequence
 
 import numpy as np
 
@@ -29,6 +29,7 @@ class Detection:
     label: str
     score: float
     source: str = ""      # which detector produced it (for ensembles / review flags)
+    landmarks: Optional[np.ndarray] = None   # faces: 5 x (x, y) normalized to the frame, when the model gives them
 
 
 class Detector(ABC):

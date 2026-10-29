@@ -7,6 +7,16 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Fixed
+- Auto-detect on sources wider than 1280 px (every 1080p body-cam file) could run on a frozen
+  picture: the detection pipe tried Intel QuickSync first and on some Intel machines that
+  decoder returned the first frame over and over, so every auto-detected box stayed where the
+  face was on frame one while the exported video looked normal. The pipe now uses DirectX
+  (d3d11va) decode with a software scale, every hardware decoder is checked on its first 12
+  frames and rejected if they are identical, and `--selftest <file>` reports "proxy decode"
+  with the decoder used. 720p sources were never affected. If you auto-detected a 1080p file
+  with an earlier version, run Auto-detect again.
+
 ## [0.1.15] - 2026-10-28
 
 ### Changed (video redaction rework: predictable, high-confidence, faster to review)

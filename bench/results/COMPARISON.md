@@ -19,6 +19,12 @@ unchanged. Leak rate on labelled footage is still unmeasured; on the reference p
 hand-redacted object (a notepad) was covered before only by unrequested whole-body boxes, so
 that accidental coverage is gone by design (Wyatt's 2026-10-28 brief: confident detections only).
 
+**Invalid rows for `_1080p_test.mp4` in phase4.json and phase6_precise.json** (found 2026-10-29):
+on this laptop the detection proxy pipe decoded that clip through QuickSync, which returned the
+first frame for the whole clip, so its auto-detect numbers (179 fps, 9 static tracks) measure
+nothing. Fixed in 0.1.16 (`core/streams.py` GUARD_FRAMES, d3d11va first); the 720p clips never
+used the proxy path and their rows stand. A full re-run of the 12-clip set is part of Phase 1.
+
 Phase 4 vs baseline: auto-detect +40 %, export −2 % (the manifest and the second source hash add
 about a second per clip; within run-to-run noise). Phase 4 vs Phase 3 iGPU: +33 % auto-detect from
 the Phase 3 stream/adaptive-stride work landing after that measurement, on the larger clip set.

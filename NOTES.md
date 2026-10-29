@@ -243,6 +243,22 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-29 (Phase 0 of the tracking rebuild): while measuring manual-box tracking,
+  found that auto-detect on sources wider than 1280 px ran on a frozen picture on this
+  laptop: FrameProducer's proxy pipe tried QuickSync first and `-hwaccel qsv
+  -hwaccel_output_format qsv` + scale_qsv/vpp_qsv + hwdownload returned frame 0 for the
+  whole clip (399/399 identical; software and d3d11va decode correct). Every 1080p
+  auto-detect track in phase6_precise.json was a static box; export was unaffected
+  (OpenCV decode). Fix: 'auto' = d3d11va then CPU, a 12-frame frozen-output guard that
+  rejects any hardware decoder (tests/test_decode_guard.py), self-test step
+  "proxy decode". Re-run on the 1080p clip: keyframes now equal the live detector's
+  boxes to the pixel. Manual-tracking diagnosis that led here (20 confident 720p faces,
+  box drawn mid-track): 87 % frame coverage with the face detector, 72 % without; the
+  dominant stop reason is ViTTrack's own score < 0.30; drift-check-off / cutoff 0.15 /
+  work frame 1024 give 90/74, 91/74, 89/79 %. Plan agreed with Wyatt (chat 2026-10-29):
+  Phase 1 detector-anchored tracker on full-res crops with a learning appearance model
+  and identity re-acquisition, Phase 2 plate detector, Phase 3 join/extend interaction,
+  Phase 4 segmentation mode only if measured viable on CPU.
 - 2026-10-28 (evening): video redaction rework after Wyatt's feedback (auto-detect
   over-redacts, objects become faces/persons; manual boxes must cover before and
   after; hotkeys; audio untouched). Measured on the reference clip with contact

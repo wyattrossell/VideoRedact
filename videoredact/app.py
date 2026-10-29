@@ -136,6 +136,34 @@ def selftest(media: str | None = None) -> int:
             return f"{i.width}x{i.height} {i.fps:.2f}fps {i.duration:.1f}s audio={i.has_audio}"
         step("probe media", _probe)
 
+        def _proxy():
+            """The detection proxy pipe (sources wider than 1280 px) must deliver the source's
+            frames, not a frozen picture: decode 24 frames at half width and compare one with
+            an OpenCV read of the same frame."""
+            import cv2
+            import numpy as np
+            from videoredact.core.media import FrameReader, probe
+            from videoredact.core.streams import FrameProducer
+            info = probe(media)
+            if not info.has_video:
+                return "skipped (no video)"
+            width = max(64, (info.width // 2) // 2 * 2)
+            n = min(24, info.frame_count or 24)
+            with FrameProducer(media, 0, n, proxy_width=width) as p:
+                frames = [f for _, f in p]
+            if not frames:
+                raise RuntimeError("proxy pipe produced no frames")
+            k = len(frames) // 2
+            with FrameReader(media) as r:
+                ref = r.read_at(k)
+            ref = cv2.resize(ref, (frames[k].shape[1], frames[k].shape[0]))
+            diff = float(np.mean(cv2.absdiff(ref, frames[k])))
+            if diff > 12:
+                raise RuntimeError(f"proxy frames do not match the source (mean diff {diff:.1f}); rejected decoders: {p.rejected}")
+            note = f"; rejected decoder(s): {', '.join(p.rejected)}" if p.rejected else ""
+            return f"{p.engine}: {len(frames)} frames at {width} px match the source (mean diff {diff:.1f}){note}"
+        step("proxy decode (detection pipe)", _proxy)
+
         def _export():
             import tempfile
             from videoredact.core.export import ExportOptions, export_project

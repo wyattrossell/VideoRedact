@@ -16,6 +16,7 @@ are enough; no extra processes.
 """
 from __future__ import annotations
 
+import logging
 import queue
 import subprocess
 import sys
@@ -26,8 +27,26 @@ import numpy as np
 
 from .media import FrameReader, ffmpeg_exe
 
+log = logging.getLogger(__name__)
+
 _CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 _SENTINEL = object()
+
+# A hardware decoder is judged on its first frames: one that returns the same picture over and
+# over is rejected and the next decoder tried. Intel QuickSync on an i7-14700T did exactly that
+# through scale_qsv / vpp_qsv + hwdownload (399 of 399 frames identical on a 1080p clip), which
+# made every auto-detect box on 1080p sources a static box until this guard existed (2026-10-29).
+GUARD_FRAMES = 12
+
+
+def _frames_frozen(frames) -> bool:
+    """True when every frame equals the one before it (mean absolute difference < 0.05)."""
+    if len(frames) < 2:
+        return False
+    for a, b in zip(frames, frames[1:]):
+        if float(np.mean(np.abs(a.astype(np.int16) - b.astype(np.int16)))) >= 0.05:
+            return False
+    return True
 
 
 def _hwaccel_args(hw: Optional[str]) -> list[str]:
@@ -56,7 +75,9 @@ class FrameProducer:
 
     proxy_width: if set and smaller than the source width, frames come from an FFmpeg
     pipe scaled to that width (height keeps the aspect, even). hwaccel: None/'auto'/
-    'qsv'/'d3d11va'/'cuda' for the pipe path ('auto' tries qsv then CPU).
+    'qsv'/'d3d11va'/'cuda' for the pipe path ('auto' tries DirectX d3d11va decode with a
+    software scale, then CPU; every hardware decoder is checked for frozen output first,
+    see GUARD_FRAMES). `rejected` lists decoders that failed that check.
     """
 
     def __init__(self, path: str, start: int = 0, end: Optional[int] = None, proxy_width: Optional[int] = None,
@@ -123,8 +144,14 @@ class FrameProducer:
 
     def _run_pipe(self) -> None:
         fsz = self.w * self.h * 3
-        # None = software decode only; "auto" = try QuickSync, then software; else the named decoder
-        hw_order = ["qsv", None] if self.hwaccel == "auto" else [None if self.hwaccel in (None, "none") else self.hwaccel]
+        # None = software decode only; "auto" = DirectX decode (frames land in system memory, the
+        # scale runs in software) then software; else the named decoder. QuickSync is only used
+        # when named: its on-device scale path returned frozen frames on an i7-14700T.
+        if self.hwaccel == "auto":
+            hw_order: list[Optional[str]] = ["d3d11va", None]
+        else:
+            hw_order = [None if self.hwaccel in (None, "none") else self.hwaccel]
+        self.rejected: list[str] = []
         for hw in hw_order:
             if self._stop.is_set():
                 break
@@ -136,25 +163,54 @@ class FrameProducer:
                 continue
             idx = self.start
             got = 0
+            pending: list = []        # a hardware decoder's first frames, held back until checked
+            guard = hw is not None
+            frozen = False
             while not self._stop.is_set():
                 buf = p.stdout.read(fsz)
                 if len(buf) < fsz:
                     break
-                self._put((idx, np.frombuffer(buf, np.uint8).reshape(self.h, self.w, 3).copy()))
+                item = (idx, np.frombuffer(buf, np.uint8).reshape(self.h, self.w, 3).copy())
                 idx += self.step
                 got += 1
+                if guard:
+                    pending.append(item)
+                    if len(pending) < GUARD_FRAMES:
+                        continue
+                    if _frames_frozen([f for _, f in pending]):
+                        frozen = True
+                        break
+                    guard = False
+                    for it in pending:
+                        self._put(it)
+                    pending = []
+                    continue
+                self._put(item)
+            if frozen:
+                try:
+                    p.kill()
+                except Exception:
+                    pass
             try:
                 p.stdout.close()
             except Exception:
                 pass
             err = p.stderr.read().decode("utf-8", "replace")
             p.wait()
+            if frozen:
+                self.rejected.append(hw)
+                self.error = f"{hw} decoder returned {GUARD_FRAMES} identical frames and was rejected"
+                log.warning("FrameProducer: hardware decoder %s returned %d identical frames; rejected, trying the next decoder",
+                            hw, GUARD_FRAMES)
+                continue
             if got > 0 or self._stop.is_set():
+                for it in pending:    # clip shorter than the guard window: nothing to compare against
+                    self._put(it)
                 self.engine = f"ffmpeg-pipe/{hw or 'cpu'}"
                 self.error = None
                 break
             self.error = err[-300:] or f"ffmpeg produced no frames with hwaccel={hw}"
-            # try the next decoder (e.g. qsv missing -> cpu)
+            # try the next decoder (e.g. d3d11va missing -> cpu)
         self._put(_SENTINEL)
 
     def _put(self, item) -> None:

@@ -2,6 +2,7 @@
 and the background tasks (transcribe, detect, track, export) together."""
 from __future__ import annotations
 
+import copy
 import os
 from pathlib import Path
 from typing import Optional
@@ -162,6 +163,7 @@ class MainWindow(QMainWindow):
         m = mb.addMenu("&Video")
         self.a_detect = act("&Auto-detect faces / screens / documents…", self.auto_detect)
         self.a_track = act("&Track selected box (forward and backward)", self.track_selected, "T")
+        self.a_join = act("&Join the next drawn box to the selected track", self.join_next_box, "J")
         self.a_quick = act("Track every new box immediately (Shift+drag asks first)", self.toggle_quick_box, checkable=True)
         self.a_quick.setChecked(bool(settings.get("quick_box", True)))
         self.a_clear_auto = act("Remove all a&utomatic detections", self.clear_auto)
@@ -176,7 +178,7 @@ class MainWindow(QMainWindow):
         self.a_prev = act("Previous redaction", lambda: self.panel.step(-1), "Shift+N")
         self.a_next_flag = act("Next flagged track", lambda: self.panel.next_flagged(1), "F")
         self.a_prev_flag = act("Previous flagged track", lambda: self.panel.next_flagged(-1), "Shift+F")
-        for a in (self.a_detect, self.a_track, self.a_quick, self.a_clear_auto, self.a_delete, self.a_undo):
+        for a in (self.a_detect, self.a_track, self.a_join, self.a_quick, self.a_clear_auto, self.a_delete, self.a_undo):
             m.addAction(a)
         m.addSeparator()
         for a in (self.a_trim_start, self.a_trim_end, self.a_extend, self.a_split, self.a_toggle,
@@ -515,17 +517,28 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Deleted '{t.label}' track ({t.total_frames()} frames). Ctrl+Z undoes.", 6000)
         self._project_changed()
 
-    def _push_undo(self, t: VideoTrack) -> None:
+    def _push_undo(self, t: VideoTrack, kind: str = "deleted") -> None:
+        """kind: "deleted" (undo re-adds the track) or "replaced" (t is a snapshot; undo puts it back)."""
         st = self.__dict__.setdefault("_undo_stack", [])
-        st.append(t)
+        st.append((kind, t))
         del st[:-20]
 
     def undo_delete(self) -> None:
         st = self.__dict__.get("_undo_stack") or []
         if not st or not self.project:
             return
-        t = st.pop()
-        if self.project.get_track(t.id) is not None:
+        kind, t = st.pop()
+        cur = self.project.get_track(t.id)
+        if kind == "replaced":
+            if cur is None:
+                return
+            cur.spans, cur.note = t.spans, t.note
+            self.project.log("video_track_restored", f"{t.label} join undone")
+            self._project_changed()
+            self._select("video", t.id)
+            self.statusBar().showMessage(f"Undid the join on the '{t.label}' track.", 4000)
+            return
+        if cur is not None:
             return
         self.project.add_video_track(t)
         self.project.log("video_track_restored", f"{t.label} frames {t.first_frame()}-{t.last_frame()}")
@@ -679,6 +692,14 @@ class MainWindow(QMainWindow):
             return
         self.player.pause()
         frame = self.current_frame()
+        target = self._join_target(frame, bbox)
+        if target is not None:
+            # the box continues an existing track (drawn in one of its gaps, or after J): the new
+            # tracking result is merged into that track instead of starting another one
+            self.__dict__["_join_next"] = False
+            self._run_tracking(frame, bbox, target.label, target, join_id=target.id)
+            self.statusBar().showMessage(f"Adding this box to the selected '{target.label}' track (Ctrl+Z undoes the join).", 8000)
+            return
         quick = bool(settings.get("quick_box", True)) and not (QApplication.keyboardModifiers() & Qt.ShiftModifier)
         if quick:
             # one gesture: drag a box, it is tracked forward and backward right away with the
@@ -719,31 +740,79 @@ class MainWindow(QMainWindow):
             self._run_tracking(frame, bbox, label, track, step=dlg.track_step, backward=dlg.track_backward, end_frame=end_frame,
                                lost_limit_s=dlg.lost_limit_s, search_to_end=dlg.search_to_end)
 
+    JOIN_GAP_S = 10.0   # a box drawn within this many seconds of a selected track's gap edge continues that track
+
+    def join_next_box(self) -> None:
+        """J: the next box drawn joins the selected track wherever it is drawn."""
+        t = self._selected_track()
+        if t is None:
+            self.statusBar().showMessage("Select a video track first, then press J and draw the box that continues it.", 6000)
+            return
+        self.__dict__["_join_next"] = True
+        self.statusBar().showMessage(f"Draw the box that continues the selected '{t.label}' track.", 8000)
+
+    def _join_target(self, frame: int, bbox: BBox) -> Optional[VideoTrack]:
+        """The selected track when the new box should continue it: J was pressed, or the box is
+        drawn in a gap of the selected track within JOIN_GAP_S of one of its spans and is of a
+        similar size to the box at that edge."""
+        t = self._selected_track()
+        if t is None or not t.spans:
+            return None
+        if self.__dict__.get("_join_next"):
+            return t
+        if t.bbox_at(frame) is not None:
+            return None
+        fps = self.fps or 30.0
+        best = None
+        for s in t.spans:
+            if s.end_frame < frame:
+                d, edge = frame - s.end_frame, s.bbox_at(s.end_frame)
+            elif s.start_frame > frame:
+                d, edge = s.start_frame - frame, s.bbox_at(s.start_frame)
+            else:
+                continue
+            if edge is not None and (best is None or d < best[0]):
+                best = (d, edge)
+        if best is None or best[0] > self.JOIN_GAP_S * fps:
+            return None
+        sa, sb = max(bbox.w, bbox.h), max(best[1].w, best[1].h)
+        return t if (sa > 0 and sb > 0 and 1 / 3 <= sa / sb <= 3) else None
+
     def _run_tracking(self, frame: int, bbox: BBox, label: str, proto: VideoTrack, replace_id: Optional[str] = None,
                       step: Optional[int] = None, backward: Optional[bool] = None, end_frame: Optional[int] = None,
-                      lost_limit_s: Optional[float] = None, search_to_end: Optional[bool] = None) -> None:
+                      lost_limit_s: Optional[float] = None, search_to_end: Optional[bool] = None,
+                      join_id: Optional[str] = None) -> None:
         """Track in the background. The track is added immediately with the drawn box and
-        fills in live as the tracker advances, so the UI stays usable."""
+        fills in live as the tracker advances, so the UI stays usable. With `join_id` the
+        result is merged into that existing track instead (a snapshot goes on the undo stack)."""
         proj = self.project
         path = proj.media.path
         det_label = label if label in ("face", "screen", "document", "phone", "person") else None
         face_conf, obj_conf, model, threads = settings["face_conf"], settings["detect_conf"], settings.get("detector_model", "yolox_tiny"), settings["cpu_threads"]
         face_model = settings.get("face_detector", "yunet")
         from videoredact.vision.tracker import TrackOptions
-        opts = TrackOptions(step=int(step or settings.get("track_step", 2)),
+        opts = TrackOptions(engine=str(settings.get("track_engine", "anchored")),
+                            step=int(step or settings.get("track_step", 2)),
                             backward=bool(settings.get("track_backward", True) if backward is None else backward),
                             end_frame=end_frame, tracker=settings.get("tracker", "vit"),
                             lost_limit_s=float(settings.get("track_lost_limit_s", 8.0) if lost_limit_s is None else lost_limit_s),
                             search_to_end=bool(settings.get("track_search_to_end", False) if search_to_end is None else search_to_end))
-        # live placeholder track
-        live = VideoTrack(label=label, style=proto.style, shape=proto.shape, pad=proto.pad, source="tracked",
-                          note="tracking in progress…")
-        live.add_keyframe(frame, bbox)
-        if replace_id:
-            proj.remove_video_track(replace_id)
-        proj.add_video_track(live)
-        self._project_changed()
-        self._select("video", live.id)
+        joined = proj.get_track(join_id) if join_id else None
+        if joined is not None:
+            self._push_undo(copy.deepcopy(joined), kind="replaced")
+            joined.add_keyframe(frame, bbox)
+            live = joined
+            self._project_changed()
+        else:
+            # live placeholder track
+            live = VideoTrack(label=label, style=proto.style, shape=proto.shape, pad=proto.pad, source="tracked",
+                              note="tracking in progress…")
+            live.add_keyframe(frame, bbox)
+            if replace_id:
+                proj.remove_video_track(replace_id)
+            proj.add_video_track(live)
+            self._project_changed()
+            self._select("video", live.id)
 
         def job(prog, cancel, partial):
             from videoredact.vision.tracker import ObjectTracker
@@ -760,14 +829,28 @@ class MainWindow(QMainWindow):
                                                               progress=prog, cancel=cancel, on_update=partial)
 
         def on_partial(spans):
-            if self.project is proj and proj.get_track(live.id) is live:
-                live.spans = spans
-                live.merge_spans()
-                self.timeline.refresh()
-                self.video.set_tracks(proj.video_tracks, proj.default_video_style)
+            if joined is not None or self.project is not proj or proj.get_track(live.id) is not live:
+                return
+            live.spans = spans
+            live.merge_spans()
+            self.timeline.refresh()
+            self.video.set_tracks(proj.video_tracks, proj.default_video_style)
 
         def done(track: VideoTrack):
             if track is None or self.project is not proj or proj.get_track(live.id) is not live:
+                return
+            if joined is not None:
+                from videoredact.vision.tracker import bridge_spans
+                before = live.total_frames()
+                live.spans = live.spans + track.spans
+                live.merge_spans()
+                bridge_spans(live, int(2.0 * (self.fps or 30.0)))
+                live.note = (live.note + "; " if live.note else "") + f"joined a box drawn at frame {frame}"
+                proj.log("track_joined", f"{label} +{live.total_frames() - before} frames from a box at frame {frame}")
+                self._project_changed()
+                self._select("video", live.id)
+                self.statusBar().showMessage(f"Joined: '{label}' track now covers {live.total_frames()} frames in "
+                                             f"{len(live.spans)} span(s) (Ctrl+Z undoes the join)", 8000)
                 return
             live.spans = track.spans
             live.note = f"tracked from frame {frame}; {len(track.spans)} visible span(s); every {opts.step} frame(s)"
@@ -776,7 +859,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Tracked '{label}': {live.total_frames()} frames in {len(live.spans)} span(s)", 8000)
 
         def on_cancel():
-            if self.project is proj:
+            if self.project is proj and joined is None:
                 live.note = "tracking cancelled (partial result kept)"
                 self._project_changed()
 
@@ -1200,7 +1283,9 @@ Audio ▸ Suggest sensitive speech finds phone numbers, names after cues, addres
 detections (a face must be seen 3+ times at 70 %+ confidence); untick that option to find everything and delete the
 false hits yourself. Drag a box on the video around anything else (a license plate, a tattoo, a notepad): it is tracked
 forward and backward immediately with the last label and style, and stops once the object has been out of view for 8 s.
-Shift+drag asks for the label, style and tracking options first.<br>
+Shift+drag asks for the label, style and tracking options first. If a track is selected and you draw a box in one of
+its gaps (within 10 s of where it stopped), the box continues that track instead of starting a new one; press J first
+to force that from anywhere.<br>
 <b>4. Review:</b> Play with <i>Preview redactions</i> on: you see the boxes and hear the beep/silence exactly as exported.
 N / Shift+N step through the redactions, Delete removes one (Ctrl+Z brings it back), E disables it without deleting,
 X splits a track at the playhead, [ ] trim it, = extends it, T re-tracks a selected box from the playhead.
@@ -1208,7 +1293,7 @@ Drag a box to fix its position: that adds a keyframe.<br>
 <b>5. Export</b> (Ctrl+E): writes the redacted file plus a PDF/CSV report with SHA-256 hashes and the project file.<br><br>
 <b>Keys:</b> Space play/pause · ←/→ frame step (Shift: 1 s) · N / Shift+N next/previous redaction · F / Shift+F next/previous
 flagged track · Delete remove selected · Ctrl+Z undo delete · E enable/disable · X split at playhead · [ ] trim start/end to
-playhead · = extend to playhead · T track selected box · Ctrl+R redact audio range at playhead · Ctrl+F find word ·
+playhead · = extend to playhead · T track selected box · J join the next box to the selected track · Ctrl+R redact audio range at playhead · Ctrl+F find word ·
 Ctrl+E export · Ctrl+B batch · Ctrl+wheel zoom timeline · double-click video to fit.
 """)
 

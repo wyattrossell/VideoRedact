@@ -46,8 +46,13 @@ if ($gh) {
 # --- REST fallback ---------------------------------------------------------
 $token = $env:GITHUB_TOKEN
 if (-not $token) {
-    $cred = "protocol=https`nhost=github.com`n`n" | git credential fill
-    $token = ($cred | Select-String '^password=(.*)$').Matches[0].Groups[1].Value
+    # Windows PowerShell re-writes piped text with CRLF line endings, which `git credential fill`
+    # rejects ("credential missing protocol field"); hand it LF-only bytes through a temp file.
+    $req = [IO.Path]::GetTempFileName()
+    [IO.File]::WriteAllText($req, "protocol=https`nhost=github.com`n`n")
+    try { $cred = cmd /c "git credential fill < `"$req`"" } finally { Remove-Item $req -ErrorAction SilentlyContinue }
+    $m = ($cred | Select-String '^password=(.*)$')
+    if ($m) { $token = $m.Matches[0].Groups[1].Value }
 }
 if (-not $token) { throw "No GitHub credential found. Install GitHub CLI (winget install GitHub.cli; gh auth login) or set GITHUB_TOKEN." }
 $headers = @{ Authorization = "Bearer $token"; Accept = "application/vnd.github+json"; "User-Agent" = "VideoRedact-publish" }

@@ -243,6 +243,29 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-29 (Phases 1 and 3 of the tracking rebuild): new `vision/anchored.py` engine for
+  objects that have a class detector: full-res ViTTrack, detector on a crop around the box
+  (ORT-CPU YuNet 1-2 ms; the OpenVINO GPU path recompiles per crop size, 450 ms), appearance
+  bank, SFace identity (new bundled model, Apache-2.0), hysteresis + plausibility gates for
+  re-acquisition. `bench/track_eval.py` (confident auto tracks as cases): faces with detector
+  86.1 % -> 97.1 % coverage; phones 86.9 % -> 87.4 % with a third of the overrun. The anchored
+  no-detector path never beat the classic loop on faces-as-other (7 variants, 65-77 % vs 76 %,
+  more drift), so `track_engine: anchored` routes detector-less objects to the classic loop;
+  `anchored-all` forces the new engine. Phase 3 shipped alongside: a box drawn in a gap of the
+  selected track joins it (J forces; Ctrl+Z undoes; `tests/test_join.py`). Details:
+  bench/results/TRACKING_V2.md. v0.1.16 (decode fix) built, installed, self-test ALL OK on the
+  1080p clip, published (publish_release.ps1 credential fix: LF-only input to git credential).
+  Phase 2 (plates) evaluated, not shipped: the only licence-clean ONNX detector (RT-DETRv2
+  plate fine-tune) is 850 ms/frame and fires on laptop screens and badges on our clips;
+  verdict and the training path in bench/results/PLATES.md. Phase 4 research: EdgeTAM is the
+  only candidate (Apache-2.0, full-pipeline ONNX export on Hugging Face `jax-image-tools/
+  edgetam-video-onnx`, est. 5+ fps at 512 px on 8 cores, unverified); not benchmarked yet.
+  PAUSED 2026-10-29 evening at Wyatt's request; resume Saturday 2026-11-01 with: (1) release
+  0.1.17 from this state after Wyatt tries the new tracking (installer not built yet),
+  (2) Wyatt's hand-redacted .vrproj files -> bench/score_project.py, (3) plates training
+  path, (4) EdgeTAM CPU benchmark (gate: 5 fps at 480p), (5) same-person gallery (Phase 3b).
+  Scratch harness files are in the session temp dir and may be gone; everything that matters
+  is in bench/.
 - 2026-10-29 (Phase 0 of the tracking rebuild): while measuring manual-box tracking,
   found that auto-detect on sources wider than 1280 px ran on a frozen picture on this
   laptop: FrameProducer's proxy pipe tried QuickSync first and `-hwaccel qsv

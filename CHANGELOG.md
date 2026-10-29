@@ -7,6 +7,25 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Changed (tracking rebuild, Phase 1 and 3)
+- A box you draw around a face (or a phone, screen or document) is now tracked by a new engine
+  that works at full resolution, checks the face detector around the box every few frames and
+  right away whenever the tracker is unsure, keeps a bank of recent views of the object, and
+  uses a face identity model (SFace, Apache-2.0, bundled) to make sure a face it finds again
+  after a loss is the same person. On 24 confident faces from our clips one drawn box now
+  covers 97 % of the face's visible frames (was 86 %); phones 87 % (unchanged) with a third of
+  the overrun. Numbers and method: `bench/results/TRACKING_V2.md`, `bench/track_eval.py`.
+  Objects without a detector (plates until the next release, tattoos, notepads) keep the
+  previous engine, which measured better on them. Settings: `track_engine` = anchored (default)
+  | anchored-all | classic.
+- Draw a box in a gap of the selected track (within 10 s of where it stopped) and it continues
+  that track instead of starting a new one; press J first to force that from anywhere. Ctrl+Z
+  undoes a join.
+- The tracker's face detector runs on the CPU ONNX runtime (1-2 ms per region) and reports
+  landmarks; the Intel GPU path recompiled for every box size.
+- ViTTrack keeps reporting a box down to an internal score of 0.05 (was 0.20); the engines apply
+  their own hysteresis.
+
 ## [0.1.16] - 2026-10-29
 
 ### Fixed

@@ -7,6 +7,8 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-10-29
+
 ### Fixed
 - Auto-detect on sources wider than 1280 px (every 1080p body-cam file) could run on a frozen
   picture: the detection pipe tried Intel QuickSync first and on some Intel machines that

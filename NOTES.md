@@ -243,6 +243,13 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-31 (Saturday resume): bench/score_project.py scores a candidate redaction
+  (another .vrproj, --auto, or --retrack = one box per reference track through the app's
+  tracker) against Wyatt's hand-made .vrproj: recall of reference box-frames (>= 85 % of the
+  box hidden), leak runs with frame ranges for review, over-redaction; tests/test_score_project.py.
+  Phase 4 measured and closed: EdgeTAM's Apache-2.0 ONNX export runs 600 ms per propagated
+  frame (1.7 fps) at its fixed 1024 px on this CPU, gate was 5 fps; bench/results/SEGMENTATION.md.
+  0.1.17 build (first installer with the anchored engine, join key, SFace) in progress.
 - 2026-10-29 (Phases 1 and 3 of the tracking rebuild): new `vision/anchored.py` engine for
   objects that have a class detector: full-res ViTTrack, detector on a crop around the box
   (ORT-CPU YuNet 1-2 ms; the OpenVINO GPU path recompiles per crop size, 450 ms), appearance

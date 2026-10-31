@@ -7,6 +7,12 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Added
+- Select a face track and press P (Video menu: "Find this person in every face track") to find
+  every other face track of the same person with the bundled SFace identity model. The matches
+  are noted in the Redactions panel and can be disabled or deleted in one go, or you can keep
+  only that person redacted and disable every other face track. Runs locally; nothing is stored.
+
 ## [0.1.17] - 2026-10-31
 
 ### Changed (tracking rebuild, Phase 1 and 3)

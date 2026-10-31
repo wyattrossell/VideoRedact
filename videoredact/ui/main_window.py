@@ -164,6 +164,7 @@ class MainWindow(QMainWindow):
         self.a_detect = act("&Auto-detect faces / screens / documents…", self.auto_detect)
         self.a_track = act("&Track selected box (forward and backward)", self.track_selected, "T")
         self.a_join = act("&Join the next drawn box to the selected track", self.join_next_box, "J")
+        self.a_person = act("Find this &person in every face track…", self.find_same_person, "P")
         self.a_quick = act("Track every new box immediately (Shift+drag asks first)", self.toggle_quick_box, checkable=True)
         self.a_quick.setChecked(bool(settings.get("quick_box", True)))
         self.a_clear_auto = act("Remove all a&utomatic detections", self.clear_auto)
@@ -178,7 +179,7 @@ class MainWindow(QMainWindow):
         self.a_prev = act("Previous redaction", lambda: self.panel.step(-1), "Shift+N")
         self.a_next_flag = act("Next flagged track", lambda: self.panel.next_flagged(1), "F")
         self.a_prev_flag = act("Previous flagged track", lambda: self.panel.next_flagged(-1), "Shift+F")
-        for a in (self.a_detect, self.a_track, self.a_join, self.a_quick, self.a_clear_auto, self.a_delete, self.a_undo):
+        for a in (self.a_detect, self.a_track, self.a_join, self.a_person, self.a_quick, self.a_clear_auto, self.a_delete, self.a_undo):
             m.addAction(a)
         m.addSeparator()
         for a in (self.a_trim_start, self.a_trim_end, self.a_extend, self.a_split, self.a_toggle,
@@ -751,6 +752,90 @@ class MainWindow(QMainWindow):
         self.__dict__["_join_next"] = True
         self.statusBar().showMessage(f"Draw the box that continues the selected '{t.label}' track.", 8000)
 
+    def find_same_person(self) -> None:
+        """P: embed the selected face track with SFace, compare every other face track, then offer
+        bulk actions on the matches (disable / delete them, or keep only this person redacted)."""
+        t = self._selected_track()
+        if t is None or t.label != "face":
+            self.statusBar().showMessage("Select a face track first (P finds the same person in the other face tracks).", 6000)
+            return
+        proj = self.project
+        path = proj.media.path
+        others = [x for x in proj.video_tracks if x.label == "face" and x is not t]
+        if not others:
+            self.statusBar().showMessage("There are no other face tracks to compare with.", 6000)
+            return
+        face_conf, threads = settings["face_conf"], settings["cpu_threads"]
+
+        def job(prog, cancel, partial):
+            from videoredact.vision.detector import CombinedDetector
+            from videoredact.vision.identity import FaceIdentity
+            from videoredact.vision.people import find_same_person
+            identity = FaceIdentity.try_create()
+            if identity is None:
+                raise RuntimeError("The face identity model (SFace) is not installed.")
+            det = CombinedDetector(["face"], min(face_conf, 0.5), 0.35, "yolox_tiny", threads, face_model="yunet")
+            det.set_score_threshold(0.3)
+            with FrameReader(path) as reader:
+                return find_same_person(reader, t, others, det, identity, progress=prog, cancel=cancel)
+
+        def done(result):
+            if result is None or self.project is not proj:
+                return
+            matches, unusable = result
+            self._offer_person_actions(t, matches, unusable, len(others))
+
+        self.jobs.run("Finding the same person", job, done)
+
+    def _offer_person_actions(self, subject: VideoTrack, matches, unusable: int, n_others: int) -> None:
+        proj = self.project
+        if not matches:
+            QMessageBox.information(self, "Same person", f"None of the other {n_others} face tracks looks like this person"
+                                    + (f" ({unusable} could not be compared: face too small or not detected)." if unusable else "."))
+            return
+        ids = {m.track.id for m in matches}
+        for m in matches:
+            tag = f"same person as track {subject.id[:6]} ({m.similarity:.2f})"
+            if tag not in (m.track.note or ""):
+                m.track.note = (m.track.note + "; " if m.track.note else "") + tag
+        box = QMessageBox(self)
+        box.setWindowTitle("Same person")
+        box.setText(f"{len(matches)} of the other {n_others} face tracks look like this person "
+                    f"(best match {matches[0].similarity:.2f}; {unusable} could not be compared).")
+        box.setInformativeText("They are now noted in the Redactions panel. What do you want to do with them?")
+        b_disable = box.addButton("Disable them", QMessageBox.ActionRole)
+        b_delete = box.addButton("Delete them", QMessageBox.DestructiveRole)
+        b_only = box.addButton("Keep only this person redacted", QMessageBox.ActionRole)
+        box.addButton("Just mark them", QMessageBox.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is b_disable:
+            for m in matches:
+                m.track.enabled = False
+            proj.log("same_person_disabled", f"{len(matches)} face tracks of the person in {subject.id}")
+            msg = f"Disabled {len(matches)} tracks of this person."
+        elif clicked is b_delete:
+            for m in matches:
+                self._push_undo(m.track)
+                proj.remove_video_track(m.track.id)
+            proj.log("same_person_deleted", f"{len(matches)} face tracks of the person in {subject.id}")
+            msg = f"Deleted {len(matches)} tracks of this person (Ctrl+Z restores them one by one)."
+        elif clicked is b_only:
+            n = 0
+            for x in proj.video_tracks:
+                if x.label == "face" and x is not subject and x.id not in ids and x.enabled:
+                    x.enabled = False
+                    n += 1
+            for m in matches:
+                m.track.enabled = True
+            proj.log("same_person_only", f"kept {len(matches) + 1} tracks of the person in {subject.id}, disabled {n} other face tracks")
+            msg = f"Kept this person redacted ({len(matches) + 1} tracks), disabled {n} other face tracks."
+        else:
+            msg = f"Marked {len(matches)} tracks as the same person."
+        self._project_changed()
+        self._select("video", subject.id)
+        self.statusBar().showMessage(msg, 8000)
+
     def _join_target(self, frame: int, bbox: BBox) -> Optional[VideoTrack]:
         """The selected track when the new box should continue it: J was pressed, or the box is
         drawn in a gap of the selected track within JOIN_GAP_S of one of its spans and is of a
@@ -1285,7 +1370,8 @@ false hits yourself. Drag a box on the video around anything else (a license pla
 forward and backward immediately with the last label and style, and stops once the object has been out of view for 8 s.
 Shift+drag asks for the label, style and tracking options first. If a track is selected and you draw a box in one of
 its gaps (within 10 s of where it stopped), the box continues that track instead of starting a new one; press J first
-to force that from anywhere.<br>
+to force that from anywhere. Select a face track and press P to find the same person in every other face track, then
+disable or delete them all at once, or keep only that person redacted.<br>
 <b>4. Review:</b> Play with <i>Preview redactions</i> on: you see the boxes and hear the beep/silence exactly as exported.
 N / Shift+N step through the redactions, Delete removes one (Ctrl+Z brings it back), E disables it without deleting,
 X splits a track at the playhead, [ ] trim it, = extends it, T re-tracks a selected box from the playhead.
@@ -1293,7 +1379,8 @@ Drag a box to fix its position: that adds a keyframe.<br>
 <b>5. Export</b> (Ctrl+E): writes the redacted file plus a PDF/CSV report with SHA-256 hashes and the project file.<br><br>
 <b>Keys:</b> Space play/pause · ←/→ frame step (Shift: 1 s) · N / Shift+N next/previous redaction · F / Shift+F next/previous
 flagged track · Delete remove selected · Ctrl+Z undo delete · E enable/disable · X split at playhead · [ ] trim start/end to
-playhead · = extend to playhead · T track selected box · J join the next box to the selected track · Ctrl+R redact audio range at playhead · Ctrl+F find word ·
+playhead · = extend to playhead · T track selected box · J join the next box to the selected track · P find the same person ·
+Ctrl+R redact audio range at playhead · Ctrl+F find word ·
 Ctrl+E export · Ctrl+B batch · Ctrl+wheel zoom timeline · double-click video to fit.
 """)
 

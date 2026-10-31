@@ -39,6 +39,17 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    (default: stop after 8 s out of view). T re-tracks a selected box from the current frame.
    Watch the box follow the object and check the timeline lane shows the covered range as one
    piece, not flickering fragments.
+   Since 0.1.17 a box around a face (or phone, screen, document) uses a new engine: it checks
+   the face detector around the box as it goes and recognises the same person when it finds the
+   face again after a loss. One box should now cover the face for its whole time on screen.
+   If it stops early anyway: select the track, draw a new box where it should continue (within
+   10 s of where it stopped) and the new piece is added to the same track instead of making a
+   second one; press J first to force that from anywhere. Ctrl+Z undoes a join. Tell us about
+   any face a single box did not follow, with the time in the clip.
+   Plates, tattoos and notepads still use the previous engine (no detector for them yet).
+   **Same person everywhere** (0.1.18): select a face track and press P. The program finds every
+   other face track of that person and offers to disable or delete them all, or to keep only
+   that person redacted. Tell us when it pairs two different people, or misses an obvious match.
 5. **Auto-detect** (Video → Auto-detect faces/screens/documents). The default keeps only
    confident detections (a face must be seen 3+ times at 70 %+ confidence, no whole-body boxes);
    expect far fewer false hits than before, and tell us about any real face it now misses.

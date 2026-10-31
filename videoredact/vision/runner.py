@@ -78,10 +78,15 @@ class ORTRunner:
 
 
 class OpenVINORunner:
-    """Compiles once per input shape (dynamic models are reshaped to the first blob
-    seen; later shape changes recompile, cached on disk). With nhwc_u8=True the
-    model takes the raw BGR uint8 frame (HxWx3) and converts/transposes on the
-    device, which removes a 10 ms CPU blob conversion per 1280x736 frame."""
+    """Compiles once per input shape (dynamic models are reshaped per blob shape; the last
+    MAX_SHAPES compiled shapes stay in memory, the rest are cached on disk). Keeping several
+    shapes matters when two passes alternate every frame (the edge-assist pad, a multi-scale
+    pass at another resolution): with a single slot each call recompiled (~150 ms) instead of
+    inferring (~8 ms). With nhwc_u8=True the model takes the raw BGR uint8 frame (HxWx3) and
+    converts/transposes on the device, which removes a 10 ms CPU blob conversion per
+    1280x736 frame."""
+
+    MAX_SHAPES = 4
 
     def __init__(self, path: str, device: str, outputs: Optional[list[str]] = None, precision: str = "f16",
                  nhwc_u8: bool = False):
@@ -102,12 +107,11 @@ class OpenVINORunner:
         self.input_shape = [d.get_length() if d.is_static else -1 for d in self.model.inputs[0].get_partial_shape()]
         self.output_names = outputs or [o.get_any_name() for o in self.model.outputs]
         self.precision = precision
-        self._shape = None
-        self._req = None
-        self._out_idx = None
+        from collections import OrderedDict
+        self._compiled: "OrderedDict[tuple, tuple]" = OrderedDict()   # shape -> (infer request, output index)
         self.engine = f"openvino/{device}"
 
-    def _compile(self, shape):
+    def _compile(self, shape) -> tuple:
         model = self.model
         if any(d == -1 for d in self.input_shape):
             model = model.clone()          # keep the dynamic original for later shapes
@@ -118,17 +122,23 @@ class OpenVINORunner:
         if not self.device.startswith("CPU"):
             cfg["INFERENCE_PRECISION_HINT"] = self.precision
         comp = self.core.compile_model(model, self.device, cfg)
-        self._req = comp.create_infer_request()
         names = [o.get_any_name() for o in comp.outputs]
-        self._out_idx = [names.index(n) for n in self.output_names]
-        self._shape = tuple(shape)
+        return comp.create_infer_request(), [names.index(n) for n in self.output_names]
 
     def run(self, blob: np.ndarray) -> list[np.ndarray]:
-        if self._shape != tuple(blob.shape):
-            self._compile(blob.shape)
-        res = self._req.infer({0: np.ascontiguousarray(blob)})
+        key = tuple(blob.shape)
+        ent = self._compiled.get(key)
+        if ent is None:
+            ent = self._compile(key)
+            self._compiled[key] = ent
+            if len(self._compiled) > self.MAX_SHAPES:
+                self._compiled.popitem(last=False)
+        else:
+            self._compiled.move_to_end(key)
+        req, out_idx = ent
+        res = req.infer({0: np.ascontiguousarray(blob)})
         outs = [res[k] for k in res]
-        return [outs[i] for i in self._out_idx]
+        return [outs[i] for i in out_idx]
 
 
 class FallbackRunner:

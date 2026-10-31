@@ -28,23 +28,43 @@ def test_embed_and_match_on_a_real_frame(tmp_path):
     faces = det.detect(img)
     if len(faces) < 2:
         pytest.skip("test image needs two faces")
-    # a one-frame "video": write the frame 10 times
+    # a one-frame "video": write the frame 20 times
     vid = tmp_path / "two_faces.mp4"
     w = cv2.VideoWriter(str(vid), cv2.VideoWriter_fourcc(*"mp4v"), 10, (W, H))
-    for _ in range(10):
+    for _ in range(20):
         w.write(img)
     w.release()
     a, b = faces[0], faces[1]
     ta = VideoTrack(label="face", spans=[Span(0, 9, {0: a.bbox})])
-    tb = VideoTrack(label="face", spans=[Span(0, 9, {0: b.bbox})])
-    ta2 = VideoTrack(label="face", spans=[Span(2, 8, {2: a.bbox})])       # the same person again
+    tb = VideoTrack(label="face", spans=[Span(12, 19, {12: b.bbox})])     # the other person, later
+    ta2 = VideoTrack(label="face", spans=[Span(12, 19, {12: a.bbox})])    # the same person again, later
+    tc = VideoTrack(label="face", spans=[Span(0, 19, {0: b.bbox})])       # on screen together with ta: skipped
     identity = FaceIdentity.try_create()
     with FrameReader(vid) as r:
         e = people.embed_track(r, ta, det, identity)
         assert e and all(abs(float(np.linalg.norm(x)) - 1) < 1e-3 for x in e)
-        matches, unusable = people.find_same_person(r, ta, [tb, ta2], det, identity)
+        matches, unusable, covisible = people.find_same_person(r, ta, [tb, ta2, tc], det, identity)
     assert [m.track.id for m in matches] == [ta2.id]
-    assert matches[0].similarity > 0.8 and unusable == 0
+    assert matches[0].similarity > 0.8 and unusable == 0 and covisible == 1
+
+
+def test_covisible_tracks_are_never_the_same_person(monkeypatch):
+    """Model-free rule: two face tracks on screen together for more than half a second are
+    different people whatever the embeddings say."""
+    from videoredact.vision import people
+    a = VideoTrack(label="face", spans=[Span(0, 100, {0: BBox(.1, .1, .1, .1)})])
+    b = VideoTrack(label="face", spans=[Span(50, 150, {50: BBox(.5, .1, .1, .1)})])    # 51 frames together
+    c = VideoTrack(label="face", spans=[Span(110, 200, {110: BBox(.5, .1, .1, .1)})])  # after a
+    d = VideoTrack(label="face", spans=[Span(95, 200, {95: BBox(.5, .1, .1, .1)})])    # 6 frames = 0.2 s: tolerated
+    assert people.covisible_frames(a, b) == 51 and people.covisible_frames(a, c) == 0 and people.covisible_frames(a, d) == 6
+    same = np.ones(128, np.float32) / np.sqrt(128)
+    monkeypatch.setattr(people, "embed_track", lambda reader, track, det, identity, samples=5: [same])
+
+    class Reader:
+        fps = 30.0
+    matches, unusable, covisible = people.find_same_person(Reader(), a, [b, c, d], det=None, identity=None)
+    assert [m.track.id for m in matches] == [c.id, d.id]
+    assert covisible == 1 and unusable == 0
 
 
 @pytest.mark.skipif(not SAMPLE.exists(), reason="sample clip missing (run scripts/make_sample.py)")

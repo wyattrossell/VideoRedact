@@ -782,16 +782,17 @@ class MainWindow(QMainWindow):
         def done(result):
             if result is None or self.project is not proj:
                 return
-            matches, unusable = result
-            self._offer_person_actions(t, matches, unusable, len(others))
+            matches, unusable, covisible = result
+            self._offer_person_actions(t, matches, unusable, len(others), covisible)
 
         self.jobs.run("Finding the same person", job, done)
 
-    def _offer_person_actions(self, subject: VideoTrack, matches, unusable: int, n_others: int) -> None:
+    def _offer_person_actions(self, subject: VideoTrack, matches, unusable: int, n_others: int, covisible: int = 0) -> None:
         proj = self.project
+        skipped = ((f" {unusable} could not be compared (face too small or not detected)." if unusable else "")
+                   + (f" {covisible} on screen at the same time as this track were skipped: a different person by definition." if covisible else ""))
         if not matches:
-            QMessageBox.information(self, "Same person", f"None of the other {n_others} face tracks looks like this person"
-                                    + (f" ({unusable} could not be compared: face too small or not detected)." if unusable else "."))
+            QMessageBox.information(self, "Same person", f"None of the other {n_others} face tracks looks like this person." + skipped)
             return
         ids = {m.track.id for m in matches}
         for m in matches:
@@ -801,7 +802,7 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setWindowTitle("Same person")
         box.setText(f"{len(matches)} of the other {n_others} face tracks look like this person "
-                    f"(best match {matches[0].similarity:.2f}; {unusable} could not be compared).")
+                    f"(best match {matches[0].similarity:.2f})." + skipped)
         box.setInformativeText("They are now noted in the Redactions panel. What do you want to do with them?")
         b_disable = box.addButton("Disable them", QMessageBox.ActionRole)
         b_delete = box.addButton("Delete them", QMessageBox.DestructiveRole)

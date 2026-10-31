@@ -55,6 +55,9 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    expect far fewer false hits than before, and tell us about any real face it now misses.
    Review the list in the right-hand panel with the keys: N / Shift+N next/previous, Delete
    (Ctrl+Z undoes), E disable, X split at the playhead, [ ] trim, = extend.
+   The dialog has an off-by-default option for faces cut off by the edge of the picture (people
+   right next to the camera). On our clips it finds those but also mistakes the camera's own
+   timestamp overlay for a face; if you try it, tell us which happened more on your footage.
 6. **Styles**: change the project default (toolbar) and one item's style (panel). Black box is
    the default and the recommended one; pixelate and heavy blur are there for footage where a
    solid box hides context.

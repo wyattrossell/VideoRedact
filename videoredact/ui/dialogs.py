@@ -241,6 +241,9 @@ class AutoDetectDialog(QDialog):
         self.tiles = QCheckBox("Tiled high-resolution detection (4K footage only; adds false positives at 720p)")
         self.tiles.setChecked(bool(settings.get("detect_tiles", False)))
         f.addRow("", self.tiles)
+        self.edge = QCheckBox("Faces cut off by the edge of the picture: mirror the border before detecting (~1.3x face cost)")
+        self.edge.setChecked(bool(settings.get("detect_edge_assist", False)))
+        f.addRow("", self.edge)
         import os as _os
         self.workers_lbl = QLabel(f"Runs on {max(1, min(4, (_os.cpu_count() or 4) // 2))} CPU workers in parallel.")
         self.workers_lbl.setStyleSheet("color: gray")

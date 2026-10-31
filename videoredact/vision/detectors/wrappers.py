@@ -1,13 +1,82 @@
-"""Detector combinators: tiling (SAHI-style), multi-scale, ensembles, head fallback."""
+"""Detector combinators: tiling (SAHI-style), multi-scale, ensembles, head fallback, edge assist."""
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Optional, Sequence
 
 import cv2
 import numpy as np
 
 from videoredact.core.model import BBox
 from .base import Detection, Detector, nms_merge, _contains
+
+EDGE_PAD_FRAC = 0.08       # mirror pad as a fraction of the frame's long side (EdgeAssist)
+
+
+class EdgeAssist(Detector):
+    """Mirror-pad the frame before detecting so a face cut off by the frame border is seen
+    as a whole face. A detector scores half a face (someone walking out of the picture, the
+    person right next to the camera) below threshold; reflecting the border completes the
+    visible half with its own mirror image, which looks like an ordinary, symmetric face
+    sitting across the border and is scored normally. Boxes are mapped back and clipped to
+    the real frame; a box lying mostly in the pad is the mirror image of an *interior* face
+    (already found by the normal pass) and is dropped.
+
+    Idea from OpenScrub (austinmabry/OpenScrub, Apache-2.0, `FaceDetector.find`), where it
+    found a border subject that every backend had missed while 20 interior faces were found.
+
+    Union, not replacement: the normal pass on the unpadded frame runs exactly as before and
+    keeps every box it finds; the padded pass (`pad_inner`, by default the same detector) only
+    *adds* boxes that overlap none of them. Measured on our clips, letting the padded pass
+    replace the normal one shrank boxes on faces that were three-quarters visible: the mirror
+    turns any sliver into a face centred on the border, and that narrower box won the NMS."""
+
+    def __init__(self, inner: Detector, pad_frac: float = EDGE_PAD_FRAC, min_pad: int = 48, min_inside: float = 0.25,
+                 labels: Optional[set[str]] = None, pad_inner: Optional[Detector] = None, dedupe_iou: float = 0.3):
+        self.inner = inner
+        self.pad_inner = pad_inner or inner
+        self.pad_frac, self.min_pad, self.min_inside, self.dedupe_iou = pad_frac, min_pad, min_inside, dedupe_iou
+        self.only = set(labels) if labels else None       # labels to keep from the padded pass (None = all)
+        self.labels = set(inner.labels)
+        self.name = f"edgeassist({inner.name})"
+
+    def pad_for(self, W: int, H: int) -> int:
+        """Covers faces up to ~2x the pad in size whose visible sliver is narrower than the pad."""
+        return max(self.min_pad, int(self.pad_frac * max(W, H)))
+
+    def detect(self, frames: Sequence[np.ndarray]) -> list[list[Detection]]:
+        out = []
+        for f, base in zip(frames, self.inner.detect(frames)):
+            H, W = f.shape[:2]
+            pad = self.pad_for(W, H)
+            padded = cv2.copyMakeBorder(f, pad, pad, pad, pad, cv2.BORDER_REFLECT_101)
+            PH, PW = padded.shape[:2]
+            dets: list[Detection] = list(base)
+            for d in self.pad_inner.detect([padded])[0]:
+                if self.only is not None and d.label not in self.only:
+                    continue
+                b = d.bbox
+                x0, y0 = b.x * PW - pad, b.y * PH - pad
+                x1, y1 = x0 + b.w * PW, y0 + b.h * PH
+                area = (x1 - x0) * (y1 - y0)
+                ix = max(0.0, min(x1, W) - max(x0, 0.0))
+                iy = max(0.0, min(y1, H) - max(y0, 0.0))
+                if area <= 0 or ix * iy < self.min_inside * area:
+                    continue                                    # mirror phantom, mostly in the pad
+                box = BBox.from_pixels(max(0.0, x0), max(0.0, y0), min(float(W), x1), min(float(H), y1), W, H)
+                if any(b.label == d.label and box.iou(b.bbox) >= self.dedupe_iou for b in base):
+                    continue                                    # the normal pass already has this one
+                lm = None
+                if d.landmarks is not None:
+                    lm = (np.asarray(d.landmarks, dtype=np.float32).reshape(5, 2) * np.array([PW, PH], np.float32)
+                          - pad) / np.array([W, H], np.float32)
+                dets.append(Detection(box, d.label, d.score, "edge-assist", landmarks=lm))
+            out.append(dets)
+        return out
+
+    def close(self) -> None:
+        self.inner.close()
+        if self.pad_inner is not self.inner:
+            self.pad_inner.close()
 
 
 class TiledDetector(Detector):

@@ -1070,6 +1070,8 @@ class MainWindow(QMainWindow):
         opts.tiles = dlg.tiles.isChecked()
         opts.multiscale = dlg.ms.isChecked()
         settings["detect_multiscale"] = opts.multiscale
+        opts.edge_assist = dlg.edge.isChecked()
+        settings["detect_edge_assist"] = opts.edge_assist
         opts.head_fallback = dlg.head.isChecked()
         opts.face_pad = float(settings.get("face_pad", 0.25))
         opts.assoc = settings.get("assoc", "botsort")

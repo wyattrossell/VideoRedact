@@ -12,13 +12,14 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .base import Detection, Detector, PerFrameDetector, nms_merge
-from .wrappers import EnsembleDetector, HeadFallback, MultiScaleDetector, TiledDetector
+from .wrappers import EdgeAssist, EnsembleDetector, HeadFallback, MultiScaleDetector, TiledDetector
 
 FACE_BACKENDS = ("yunet", "yunet_cv", "centerface", "scrfd", "egoblur")
 
 
 def build_face(backend: str = "yunet", score_thr: float = 0.5, max_side: int = 1280, tiles: bool = False,
-               tile: int = 640, multiscale: Optional[list[float]] = None, threads: int = 0) -> Detector:
+               tile: int = 640, multiscale: Optional[list[float]] = None, threads: int = 0,
+               edge_assist: bool = False) -> Detector:
     from . import adapters
     if backend == "yunet":
         from .yunet_ort import YuNetORTDetector
@@ -34,10 +35,15 @@ def build_face(backend: str = "yunet", score_thr: float = 0.5, max_side: int = 1
         det = adapters.EgoBlurDetector("face", score_thr=score_thr, max_side=max_side)
     else:
         raise ValueError(f"unknown face backend {backend}")
+    raw = det
     if multiscale:
         det = MultiScaleDetector(det, multiscale, extra_every=2)
     if tiles:
         det = TiledDetector(det, tile=tile, min_side=1000)
+    if edge_assist:
+        # Outermost, with a single plain pass on the mirror-padded frame: the normal pipeline
+        # (scales, tiles) is unchanged and the pad only adds faces cut off by the frame border.
+        det = EdgeAssist(det, pad_inner=raw)
     return det
 
 
@@ -47,7 +53,8 @@ def build(cfg: dict[str, Any]) -> Detector:
     if cfg.get("face", "yunet"):
         members.append(build_face(cfg.get("face", "yunet"), float(cfg.get("face_conf", 0.5)),
                                   int(cfg.get("face_max_side", 1280)), bool(cfg.get("tiles", False)),
-                                  int(cfg.get("tile", 640)), cfg.get("multiscale"), threads))
+                                  int(cfg.get("tile", 640)), cfg.get("multiscale"), threads,
+                                  edge_assist=bool(cfg.get("edge_assist", False))))
     objects = set(cfg.get("objects") or [])
     person_requested = "person" in objects
     if cfg.get("head_fallback") and "person" not in objects:
@@ -79,5 +86,5 @@ def build(cfg: dict[str, Any]) -> Detector:
     return det
 
 
-__all__ = ["Detection", "Detector", "PerFrameDetector", "nms_merge", "EnsembleDetector", "HeadFallback",
+__all__ = ["Detection", "Detector", "PerFrameDetector", "nms_merge", "EdgeAssist", "EnsembleDetector", "HeadFallback",
            "MultiScaleDetector", "TiledDetector", "build", "build_face", "FACE_BACKENDS"]

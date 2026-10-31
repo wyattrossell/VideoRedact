@@ -87,6 +87,7 @@ class AutoDetectOptions:
     lead_out: int = 15         # persistence: frames kept after the last detection / carry
     tiles: bool = False        # SAHI-style tiled face detection (mostly false positives at 720p; useful at 4K)
     multiscale: bool = True    # also run the face detector on a 1.5x upscaled frame: finds small/distant/profile faces (+2.4x face cost)
+    edge_assist: bool = False  # mirror-pad the frame so faces cut off by the frame border are detected (detectors/wrappers.py EdgeAssist)
     head_fallback: bool = False  # emit a head box for persons without a detected face (691 of 1,651 face tracks on the reference clip, ~1/3 real)
     emit_person_boxes: bool = False  # whole-body boxes from the head-fallback person detector; False = only when "person" is a label
     doc_model: str = "yolox_tiny_doc"  # fine-tuned document/plate detector (train/); ignored when the file is absent
@@ -142,6 +143,7 @@ def build_detector(opts: "AutoDetectOptions"):
     cfg.setdefault("face_conf", opts.face_conf)
     cfg.setdefault("tiles", opts.tiles)
     cfg.setdefault("multiscale", [1.0, 1.5] if opts.multiscale else None)
+    cfg.setdefault("edge_assist", opts.edge_assist)
     cfg.setdefault("objects", [l for l in opts.labels if l != "face"])
     cfg.setdefault("object_model", opts.obj_model)
     cfg.setdefault("obj_conf", opts.obj_conf)

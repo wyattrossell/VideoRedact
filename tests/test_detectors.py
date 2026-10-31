@@ -2,7 +2,61 @@ import numpy as np
 
 from videoredact.core.model import BBox, Span, VideoTrack
 from videoredact.vision.detectors.base import Detection, Detector, nms_merge
-from videoredact.vision.detectors.wrappers import EnsembleDetector, HeadFallback, MultiScaleDetector, TiledDetector
+from videoredact.vision.detectors.wrappers import EdgeAssist, EnsembleDetector, HeadFallback, MultiScaleDetector, TiledDetector
+
+
+class Recorder(Detector):
+    """Returns the boxes given per call (normalized to whatever frame it is handed) and
+    records the frame sizes it saw."""
+    labels = {"face"}
+
+    def __init__(self, per_call):
+        self.per_call, self.sizes, self.name = list(per_call), [], "rec"
+
+    def detect(self, frames):
+        out = []
+        for f in frames:
+            self.sizes.append(f.shape[:2])
+            dets = self.per_call.pop(0) if self.per_call else []
+            out.append([Detection(b, "face", s, self.name, landmarks=lm) for b, s, lm in dets])
+        return out
+
+
+def test_edge_assist_adds_border_faces_and_drops_mirror_phantoms():
+    W, H = 640, 360
+    ea = EdgeAssist(Recorder([]), pad_frac=0.1, min_pad=48)
+    pad = ea.pad_for(W, H)
+    assert pad == 64
+    PW, PH = W + 2 * pad, H + 2 * pad
+    # Padded pass, in padded coordinates: (a) a face straddling the real left edge, half outside;
+    # (b) a face entirely inside the pad (mirror image of an interior face); (c) an interior face
+    # the normal pass also found (same box, different score).
+    a = BBox.from_pixels(pad - 40, pad + 100, pad + 40, pad + 180, PW, PH)
+    b = BBox.from_pixels(4, pad + 100, 60, pad + 180, PW, PH)
+    c = BBox.from_pixels(pad + 300, pad + 100, pad + 380, pad + 180, PW, PH)
+    lm = np.array([[(pad - 20) / PW, (pad + 120) / PH]] * 5, dtype=np.float32)
+    normal = Recorder([[(BBox.from_pixels(300, 100, 380, 180, W, H), 0.7, None)]])
+    padded = Recorder([[(a, 0.9, lm), (b, 0.8, None), (c, 0.95, None)]])
+    ea.inner, ea.pad_inner = normal, padded
+    dets = ea.detect([np.zeros((H, W, 3), np.uint8)])[0]
+    assert normal.sizes == [(H, W)] and padded.sizes == [(PH, PW)]
+    # the normal pass's box comes first and unchanged; the border face is added; the phantom
+    # (b) and the duplicate (c) are not
+    assert [(round(d.score, 2), d.source) for d in dets] == [(0.7, "rec"), (0.9, "edge-assist")]
+    interior, edge = dets
+    assert interior.bbox.to_pixels(W, H) == (300, 100, 380, 180)
+    assert edge.bbox.to_pixels(W, H) == (0, 100, 40, 180)    # clipped to the real frame
+    # landmarks are mapped back too (and may lie outside the frame)
+    assert abs(edge.landmarks[0, 0] * W - (-20)) < 1e-3 and abs(edge.landmarks[0, 1] * H - 120) < 1e-3
+
+
+def test_edge_assist_never_changes_the_normal_pass():
+    """Union-only: with nothing new in the pad, the output is exactly the inner detector's."""
+    W, H = 400, 300
+    box = BBox.from_pixels(100, 50, 160, 120, W, H)
+    ea = EdgeAssist(Recorder([[(box, 0.95, None)]]), pad_inner=Recorder([]))
+    dets = ea.detect([np.zeros((H, W, 3), np.uint8)])[0]
+    assert len(dets) == 1 and dets[0].bbox.to_pixels(W, H) == (100, 50, 160, 120) and dets[0].source == "rec"
 
 
 class Fake(Detector):

@@ -72,7 +72,19 @@ operator chooses it as the output folder.
 * **Project file:** hashed after it is saved; the manifest records that hash, so the
   `.vrproj` on disk is tied to the manifest.
 * **Model files:** every model file present is hashed and listed with its licence, so a
-  reviewer can tell exactly which detector produced the redactions.
+  reviewer can tell exactly which detector produced the redactions. Since 0.1.18 the registry
+  carries the published SHA-256 of every bundled model; the manifest's `models[].matches_registry`
+  says whether the file used is that file, downloads that differ are rejected, and
+  `--selftest` has a "model integrity" step.
+* **Output metadata:** the output is assembled from a raw frame pipe and the program's own
+  audio, so no container or stream tag of the source (camera model and serial, GPS, creation
+  time, comments) is ever copied into it. The manifest records every tag the output does carry
+  (`output.metadata_tags`) and the result of checking the source's tag values against them
+  (`output.source_metadata_carried`, expected `[]`); a non-empty list is also logged as
+  `WARNING_source_metadata_in_output`.
+* **Atomic write:** the encoder writes `<name>.part.<ext>` and the file is renamed to the
+  output name only when it is complete, so an interrupted export never leaves a half-written
+  file under the released name.
 * **Manifest:** `manifest_sha256` is the SHA-256 of the manifest's canonical JSON body
   (sorted keys, no whitespace, excluding the hash field). It is printed in the PDF report and
   the CSV. `python -c "from videoredact.core.audit import verify_manifest; print(verify_manifest('x_audit.json'))"`
@@ -151,3 +163,35 @@ timestamp and Windows user, from the moment the file was opened).
   (including a `VideoRedact/<version>` user agent) to GitHub. Nothing about the case is sent.
 * Transcription (speech-to-text) runs locally; its accuracy on body-camera audio is limited
   and the transcript should not be treated as a verbatim record.
+
+## 9. Measured redaction strength, and how to quote it
+
+`bench/reid_attack.py` attacks a redacted export the way an adversary holding the original
+would: the face recogniser (SFace) is aligned on the *original's* landmarks and run on the
+*redacted* pixels, and the result is compared with the original identity. Measured on
+2026-10-31 on one 45-second 720p body-cam clip (crash scene, 45 face tracks, 80 confirmed
+face-frames covered by the shipped auto-detect profile; control: the recogniser matched
+unredacted faces of the same person at 0.73 mean similarity against 0.23 between different
+people, so the clip supports the measurement):
+
+| Style | Re-identified at the app's same-person threshold (0.363) | At 0.55 | Still detected as a face | Mean similarity after redaction |
+|---|---|---|---|---|
+| Black (default) | 0 of 80 | 0 | 0 | -0.02 |
+| Pixelate (16 px floor) | 3 of 80 | 0 | 0 | 0.17 |
+| Heavy blur | 4 of 80 | 0 | 1 | 0.14 |
+
+Mean similarity after redaction sits below the different-person level in every style, i.e. a
+redacted face matches its own original no better than a stranger would. The residual matches
+at the loose threshold are all in blur and pixelate; the numbers and the faces behind them are
+in bench/results/REID_ATTACK.md. Black remains the recommended style.
+
+Quoting these numbers (rules adopted from OpenScrub's benchmark notes):
+
+* Always state the version, the style, the clip description and the hardware. A number without
+  them is not a claim.
+* A measured 0 is a result on that footage, not a promise about footage nobody has run.
+  Say "0 of 80 face-frames on the crash-scene clip were re-identified", never "faces cannot be
+  re-identified".
+* Never describe the program as "CJIS compliant", "court certified" or "guaranteed". Tools are
+  not compliant; an agency's process is.
+* Publish the failures next to the successes (the blur and pixelate rows above are the point).

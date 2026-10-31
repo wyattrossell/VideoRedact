@@ -91,3 +91,22 @@ report (Phase 4), so the exact weights behind a redaction are always on record.
    `tests/test_licenses.py` fails if either name appears there.
 4. Candidates cleared for future phases: EgoBlur (Apache-2.0, plates), RF-DETR Apache sizes.
    SAM 3 only as an optional add-on with its licence text shown.
+
+## 5. Ideas adapted from other open-source projects (2026-10-31)
+
+Reviewed in full (docs/RESEARCH.md). None of their code was copied; the techniques were
+re-implemented on our own detector, track and audit models. Listed so the lineage is on record
+and the Apache-2.0 attribution is honoured even though no notice is legally required for an
+independent re-implementation.
+
+| Project | Licence | Adapted into VideoRedact |
+|---|---|---|
+| austinmabry/OpenScrub | Apache-2.0 | Mirror-padded ("edge assist") face detection (`vision/detectors/wrappers.py` `EdgeAssist`, our union variant); temporal cannot-link in same-person matching (`vision/people.py`); the re-identification attack protocol (`bench/reid_attack.py`); the rules for quoting benchmark numbers (docs/CJIS_COMPLIANCE.md section 9) |
+| ssrajadh/sentryblur | Apache-2.0 | Atomic output write (`core/export.py` `partial_path`) |
+| ak375456/privacycam | Apache-2.0 | Export metadata verification (`core/media.py` `media_tags` / `metadata_carried`, recorded in the audit manifest) |
+| caipeijia833/doc-redaction | Apache-2.0 | Published-hash verification of bundled components (`vision/models.py` `verify_models`, the `--selftest` "model integrity" step) |
+
+Not adopted from them, for licence reasons: InsightFace SCRFD weights (non-commercial),
+Ultralytics YOLO-seg silhouettes (AGPL-3.0), SAM 3 (bespoke licence, GPU only), and the
+open-image-models YOLOv9 plate weights (MIT repository, but see bench/results/PLATES.md on the
+training provenance; both OpenScrub and PrivacyCam ship them as MIT, a decision left to Wyatt).

@@ -12,6 +12,28 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
   every other face track of the same person with the bundled SFace identity model. The matches
   are noted in the Redactions panel and can be disabled or deleted in one go, or you can keep
   only that person redacted and disable every other face track. Runs locally; nothing is stored.
+  Two face tracks on screen at the same time for more than half a second are never paired (they
+  are different people by definition), and faces under 32 px are not compared.
+- Export writes to `<name>.part.mp4` and renames it only when the file is complete, so a crash,
+  a cancel or a full disk never leaves a half-written file under the name you would hand out.
+- The audit manifest now records every metadata tag the output carries and checks that none of
+  the source's tag values (camera, GPS, creation time, comments) reappear in it
+  (`output.source_metadata_carried`, expected `[]`). The output is built from a raw frame pipe
+  and our own audio, so nothing is copied; the manifest now proves it instead of claiming it.
+- Every bundled model has its published SHA-256 in the registry; downloads that do not match are
+  rejected, `--selftest` has a "model integrity" step, and the manifest says for each model used
+  whether it matches the published file.
+- Auto-detect option "Faces cut off by the edge of the picture" (off by default): the border is
+  mirrored before detecting so a face half out of the frame is seen whole. Measured on our clips
+  it adds real border faces but also reflections of hands and the camera overlay; see
+  docs/RESEARCH.md before turning it on.
+- `bench/reid_attack.py`: attacks a redacted export with the face recogniser using the
+  original's geometry and reports how many faces are still re-identifiable, still detectable,
+  or untouched (bench/results/REID_ATTACK.md).
+
+### Changed
+- Inference on the Intel GPU keeps the last four compiled input shapes instead of one; passes
+  that alternate shapes every frame no longer recompile (150 ms) on each call.
 
 ## [0.1.17] - 2026-10-31
 

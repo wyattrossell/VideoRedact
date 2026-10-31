@@ -243,6 +243,19 @@ samples/ (720p30 Axon clips), i7-14700T:
 
 ## Log
 
+- 2026-10-31 (evening, four reference repos): Wyatt asked for OpenScrub, sentryblur,
+  privacycam and doc-redaction (all Apache-2.0) to be mined; table of what was taken and
+  rejected in docs/RESEARCH.md, attribution in docs/LICENSES.md section 5. Shipped behind
+  the usual gates: `EdgeAssist` (mirror-padded face detection, union variant, Auto-detect
+  option off by default: 0 lost / 56 gained on 990 bench frames, about a quarter of the gains
+  real border faces, the rest hands and the Axon overlay); atomic export via `<name>.part.mp4`;
+  output metadata proof in the manifest (`media_tags`, `metadata_carried`); registry SHA-256
+  for every bundled model (`verify_models`, selftest "model integrity"); co-visibility
+  cannot-link and 32 px minimum in `people.find_same_person` (now returns a 3-tuple);
+  OpenVINO runner keeps 4 compiled shapes (alternating shapes recompiled every call: 168 ms
+  vs 26 ms per frame); `bench/reid_attack.py` + bench/results/REID_ATTACK.md. Open questions
+  for Wyatt (plates licence, ignore zone for the Axon overlay, automatic people gallery,
+  phone/VFR footage, manifest signing, box edit scope) are in the session handover.
 - 2026-10-31 (Saturday resume): bench/score_project.py scores a candidate redaction
   (another .vrproj, --auto, or --retrack = one box per reference track through the app's
   tracker) against Wyatt's hand-made .vrproj: recall of reference box-frames (>= 85 % of the

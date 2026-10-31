@@ -7,6 +7,8 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-10-31
+
 ### Changed (tracking rebuild, Phase 1 and 3)
 - A box you draw around a face (or a phone, screen or document) is now tracked by a new engine
   that works at full resolution, checks the face detector around the box every few frames and

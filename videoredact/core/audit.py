@@ -171,7 +171,11 @@ def build_manifest(project: Project, result: dict[str, Any], export_opts: Any) -
                    "clip_range_s": list(result["clip"]) if result.get("clip") else None,
                    "project_file": result.get("project"), "project_sha256": sha256_file(result["project"]) if result.get("project") and Path(result["project"]).exists() else None,
                    "report_pdf": result.get("report_pdf"), "report_csv": result.get("report_csv"),
-                   "verification_csv": result.get("verification_csv"), "elapsed_s": round(result.get("elapsed_s", 0.0), 1)},
+                   "verification_csv": result.get("verification_csv"), "elapsed_s": round(result.get("elapsed_s", 0.0), 1),
+                   # every container/stream tag the output carries, and which source tag values (if any)
+                   # reappear in it: [] = none of the source's device / GPS / time / comment tags were copied
+                   "metadata_tags": result.get("output_metadata"),
+                   "source_metadata_carried": result.get("source_metadata_carried")},
         "export_options": {k: v for k, v in (asdict(export_opts) if hasattr(export_opts, "__dataclass_fields__") else dict(export_opts)).items()},
         "engine": engine_info(),
         "models": model_inventory(),

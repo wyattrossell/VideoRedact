@@ -150,6 +150,58 @@ def sha256_file(path: str | Path, progress: Optional[Callable[[float], None]] = 
     return h.hexdigest()
 
 
+def media_tags(path: str | Path) -> dict[str, dict[str, str]]:
+    """Container and stream metadata tags as FFmpeg's banner prints them, keyed "format" /
+    "stream0" / "stream1" ...: device names, creation times, GPS (`location`, Apple's
+    `com.apple.quicktime.location.ISO6709`), comments, encoder strings. Used to show that an
+    export carries none of the source's tags: the output is built from a raw frame pipe and
+    our own audio, so nothing is copied, and `export_project` records the proof."""
+    res = run_ffmpeg(["-i", str(path)], text=True, encoding="utf-8", errors="replace")
+    out: dict[str, dict[str, str]] = {}
+    section: Optional[str] = None
+    meta_indent: Optional[int] = None
+    for line in (res.stderr or "").splitlines():
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+        if stripped.startswith("Input #"):
+            section, meta_indent = "format", None
+            continue
+        m = re.match(r"Stream #\d+:(\d+)", stripped)
+        if m:
+            section, meta_indent = f"stream{m.group(1)}", None
+            continue
+        if stripped == "Metadata:":
+            meta_indent = indent
+            continue
+        if meta_indent is None:
+            continue
+        if indent <= meta_indent:
+            meta_indent = None
+            continue
+        key, sep, value = stripped.partition(":")
+        if sep and key.strip() and section:
+            out.setdefault(section, {})[key.strip()] = value.strip()
+    return out
+
+
+# Tags every muxer writes with generic values; their presence in an output proves nothing about the source.
+_STRUCTURAL_TAGS = {"major_brand", "minor_version", "compatible_brands", "handler_name", "vendor_id", "encoder", "language"}
+
+
+def metadata_carried(source: dict[str, dict[str, str]], output: dict[str, dict[str, str]]) -> list[str]:
+    """Source tags whose value reappears anywhere in the output ("section.key"). Structural tags and
+    very short values are ignored. Expected to be empty for every export."""
+    out_values = {v for sec in output.values() for v in sec.values() if v}
+    hits = []
+    for sec, tags in source.items():
+        for k, v in tags.items():
+            if k in _STRUCTURAL_TAGS or len(v) < 3:
+                continue
+            if v in out_values:
+                hits.append(f"{sec}.{k}")
+    return hits
+
+
 _DUR_RE = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 _VID_RE = re.compile(r"Stream #\d+:\d+.*?: Video: (\w+).*?,\s*(\d{2,5})x(\d{2,5}).*?(?:,\s*([\d.]+) fps)?")
 _AUD_RE = re.compile(r"Stream #\d+:\d+.*?: Audio: (\w+).*?,\s*(\d+) Hz,\s*([^,]+)")

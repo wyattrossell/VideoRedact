@@ -21,7 +21,8 @@ from typing import Callable, Optional
 import numpy as np
 
 from . import audio_redact, video_redact
-from .media import FrameReader, decode_audio, ffmpeg_exe, local_path, probe, sha256_file, write_wav
+from .media import (FrameReader, decode_audio, ffmpeg_exe, local_path, media_tags, metadata_carried, probe,
+                    sha256_file, write_wav)
 from .model import Project
 from .streams import FFmpegWriter, FrameProducer
 
@@ -154,6 +155,14 @@ def _report_paths(out: Path) -> tuple[Path, Path, Path]:
             Path(str(stem) + ".vrproj"))
 
 
+def partial_path(out: Path) -> Path:
+    """Where the encoder writes while an export runs: same folder (so the final rename is atomic on
+    the same volume) and same extension (so FFmpeg picks the same muxer). The output path only
+    comes into existence once the file is complete, so a crash, a cancel or a full disk never
+    leaves a half-written file under the name the reviewer will hand out."""
+    return out.with_name(out.stem + ".part" + out.suffix)
+
+
 def export_project(project: Project, opts: ExportOptions,
                    progress: Optional[ProgressCB] = None,
                    cancel: Optional[CancelCB] = None) -> dict:
@@ -171,12 +180,33 @@ def export_project(project: Project, opts: ExportOptions,
     src = local_path(src_orig, progress)      # network-share sources decode ~40 % faster from local disk
     out_path = Path(opts.output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    part = partial_path(out_path)
+    part.unlink(missing_ok=True)
     t0 = time.time()
     tmpdir = Path(tempfile.mkdtemp(prefix="videoredact_"))
     wav_path = tmpdir / "audio.wav"
     result: dict = {"output": str(out_path)}
 
     try:
+        _export_media(project, opts, info, src, out_path, part, result, prog, check_cancel, cancel, wav_path, tmpdir)
+    except BaseException:
+        part.unlink(missing_ok=True)           # never leave a half-written file behind
+        raise
+    finally:
+        try:
+            if wav_path.exists():
+                os.remove(wav_path)
+            os.rmdir(tmpdir)
+        except Exception:
+            pass
+    return result
+
+
+def _export_media(project: Project, opts: ExportOptions, info, src: str, out_path: Path, part: Path, result: dict,
+                  prog, check_cancel, cancel: Optional[CancelCB], wav_path: Path, tmpdir: Path) -> None:
+    src_orig = project.media.path
+    t0 = time.time()
+    if True:
         # ---------------- clip range ----------------
         fps_info = info.fps or 30.0
         clip_start = max(0.0, float(opts.start_s or 0.0))
@@ -220,7 +250,7 @@ def export_project(project: Project, opts: ExportOptions,
                 workers = opts.workers if opts.workers and opts.workers > 1 else 1
                 workers = min(workers, max(1, total // MIN_FRAMES_PER_WORKER))
             if workers > 1:
-                _export_video_parallel(src, out_path, f_start, f_last, fps, W, H, project, opts,
+                _export_video_parallel(src, part, f_start, f_last, fps, W, H, project, opts,
                                        wav_path if has_audio else None, has_audio, workers, prog, cancel, tmpdir)
                 result["encode_workers"] = workers
             else:
@@ -240,7 +270,7 @@ def export_project(project: Project, opts: ExportOptions,
                     cmd += ["-threads", str(opts.threads)]
                 if has_audio:
                     cmd += ["-shortest"]
-                cmd += [str(out_path)]
+                cmd += [str(part)]
                 # Pipelined: a decode thread fills a queue, this thread redacts, an encode
                 # thread streams to FFmpeg. Decode/encode overlap instead of running serially.
                 writer = FFmpegWriter(cmd)
@@ -276,13 +306,30 @@ def export_project(project: Project, opts: ExportOptions,
             codec = {".wav": ["-c:a", "pcm_s16le"], ".mp3": ["-c:a", "libmp3lame", "-b:a", opts.audio_bitrate],
                      ".flac": ["-c:a", "flac"], ".ogg": ["-c:a", "libvorbis"]}.get(ext, ["-c:a", "aac", "-b:a", opts.audio_bitrate])
             res = subprocess.run([ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-i", str(wav_path),
-                                  *codec, str(out_path)], capture_output=True, creationflags=_CREATE_NO_WINDOW)
+                                  *codec, str(part)], capture_output=True, creationflags=_CREATE_NO_WINDOW)
             if res.returncode != 0:
                 raise RuntimeError("FFmpeg audio encode failed: " + res.stderr.decode("utf-8", "replace")[-1500:])
+
+        # The file is complete: give it its real name in one atomic step.
+        check_cancel()
+        os.replace(part, out_path)
 
         # ---------------- hashes + sidecars ----------------
         prog(0.97, "Hashing output")
         result["output_sha256"] = sha256_file(out_path)
+        # The output is built from a raw frame pipe and our own audio, so none of the source's
+        # container/stream tags (device, GPS, creation time, comments) can be copied into it.
+        # Record the output's tags and check the source's values against them so the manifest
+        # carries the proof rather than the claim.
+        try:
+            out_tags = media_tags(out_path)
+            result["output_metadata"] = out_tags
+            result["source_metadata_carried"] = metadata_carried(media_tags(src_orig), out_tags)
+            if result["source_metadata_carried"]:
+                project.log("WARNING_source_metadata_in_output", ", ".join(result["source_metadata_carried"]))
+        except Exception as e:  # noqa: BLE001  (a probe failure must not fail the export)
+            result["source_metadata_carried"] = None
+            project.log("metadata_check_failed", str(e))
         # The original is never modified; prove it: re-hash at export and compare with the
         # hash taken when the file was opened (chain of custody, SWGDE working-copy practice).
         prog(0.98, "Verifying source hash")
@@ -339,11 +386,3 @@ def export_project(project: Project, opts: ExportOptions,
             write_csv(project, csv_p, result)
             write_pdf(project, pdf_p, result)
         prog(1.0, "Export complete")
-        return result
-    finally:
-        try:
-            if wav_path.exists():
-                os.remove(wav_path)
-            os.rmdir(tmpdir)
-        except Exception:
-            pass

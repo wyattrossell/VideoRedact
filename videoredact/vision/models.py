@@ -25,33 +25,40 @@ class ModelSpec:
     license: str
     purpose: str
     min_bytes: int  # sanity check so a Git-LFS pointer or HTML page is rejected
+    sha256: str = ""  # SHA-256 of the published file; verified after download and by the self-test ("" = not pinned)
 
 
 MODELS: dict[str, ModelSpec] = {
     "yunet": ModelSpec(
         "yunet", "face_detection_yunet_2023mar.onnx",
         "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
-        "MIT", "Face detector (fast, OpenCV FaceDetectorYN)", 200_000),
+        "MIT", "Face detector (fast, OpenCV FaceDetectorYN)", 200_000,
+        "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"),
     "centerface": ModelSpec(
         "centerface", "centerface.onnx",
         "https://github.com/Star-Clouds/CenterFace/raw/master/models/onnx/centerface.onnx",
-        "MIT", "Face detector (higher recall on small faces)", 5_000_000),
+        "MIT", "Face detector (higher recall on small faces)", 5_000_000,
+        "77e394b51108381b4c4f7b4baf1c64ca9f4aba73e5e803b2636419578913b5fe"),
     "yolox_s": ModelSpec(
         "yolox_s", "yolox_s.onnx",
         "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.onnx",
-        "Apache-2.0", "COCO object detector: screens, laptops, phones, books, people (640px)", 30_000_000),
+        "Apache-2.0", "COCO object detector: screens, laptops, phones, books, people (640px)", 30_000_000,
+        "c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063"),
     "vittrack": ModelSpec(
         "vittrack", "object_tracking_vittrack_2023sep.onnx",
         "https://github.com/opencv/opencv_zoo/raw/main/models/object_tracking_vittrack/object_tracking_vittrack_2023sep.onnx",
-        "Apache-2.0", "ViT single-object tracker (scale-adaptive, ~5 ms/frame on CPU)", 500_000),
+        "Apache-2.0", "ViT single-object tracker (scale-adaptive, ~5 ms/frame on CPU)", 500_000,
+        "2990f0b7cd44d92afa48cd97db6de7be113fc1d9594fddb74e2725c10478e91d"),
     "yolox_tiny": ModelSpec(
         "yolox_tiny", "yolox_tiny.onnx",
         "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",
-        "Apache-2.0", "COCO object detector, faster/less accurate (416px)", 15_000_000),
+        "Apache-2.0", "COCO object detector, faster/less accurate (416px)", 15_000_000,
+        "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7"),
     "sface": ModelSpec(
         "sface", "face_recognition_sface_2021dec.onnx",
         "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
-        "Apache-2.0", "Face identity embedding: same-person check when a tracked face is re-acquired", 30_000_000),
+        "Apache-2.0", "Face identity embedding: same-person check when a tracked face is re-acquired", 30_000_000,
+        "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"),
     # Optional, no download source: produced by train/finetune_yolox.py from our own pseudo-labelled
     # footage (train/pseudolabel_openvocab.py). Bundled when present in models/; skipped when absent.
     "yolox_tiny_doc": ModelSpec(
@@ -87,6 +94,30 @@ def required_models() -> list[str]:
     return [n for n in MODELS if not (is_optional(n) and not is_available(n))]
 
 
+def file_sha256(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8 * 1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_model(name: str) -> tuple[Optional[bool], str]:
+    """Compare the installed model file with the registry hash. Returns (matches, actual hash);
+    matches is None when the registry has no hash for this model (locally trained files)."""
+    actual = file_sha256(model_path(name))
+    spec = MODELS[name]
+    return (actual == spec.sha256) if spec.sha256 else None, actual
+
+
+def verify_models() -> dict[str, Optional[bool]]:
+    """Every installed model -> True (matches the published file), False (differs) or None (unpinned).
+    A False here means the file in the models folder is not the one the registry names: a
+    truncated download, a corrupted disk, or a swapped file; the app must not trust it."""
+    return {n: verify_model(n)[0] for n in MODELS if is_available(n)}
+
+
 def ensure_model(name: str, progress: Optional[ProgressCB] = None) -> Path:
     """Return the model path; download only when offline mode is off.
     In offline mode (default) a missing model is an error that names the file, so a
@@ -119,5 +150,11 @@ def ensure_model(name: str, progress: Optional[ProgressCB] = None) -> Path:
     if tmp.stat().st_size < spec.min_bytes:
         tmp.unlink(missing_ok=True)
         raise RuntimeError(f"Downloaded {spec.filename} is too small - URL may have changed: {spec.url}")
+    if spec.sha256:
+        got = file_sha256(tmp)
+        if got != spec.sha256:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError(f"Downloaded {spec.filename} does not match the published file "
+                               f"(sha256 {got[:16]}… expected {spec.sha256[:16]}…); not installed.")
     tmp.replace(dest)
     return dest

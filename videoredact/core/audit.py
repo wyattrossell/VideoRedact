@@ -65,7 +65,10 @@ def model_inventory() -> list[dict[str, Any]]:
                     h = sha256_file(p)
                     _MODEL_HASH_CACHE[key] = h
                 out.append({"name": name, "file": str(p), "bytes": p.stat().st_size, "sha256": h,
-                            "license": spec.license, "purpose": spec.purpose, "source_url": spec.url})
+                            "license": spec.license, "purpose": spec.purpose, "source_url": spec.url,
+                            # the published file's hash (vision/models.py); True = the model used is that file
+                            "registry_sha256": spec.sha256 or None,
+                            "matches_registry": (h == spec.sha256) if spec.sha256 else None})
                 break
     # speech model (faster-whisper CTranslate2 folder): hash the model.bin
     try:
@@ -80,7 +83,8 @@ def model_inventory() -> list[dict[str, Any]]:
                     h = _MODEL_HASH_CACHE.get(key) or sha256_file(mb)
                     _MODEL_HASH_CACHE[key] = h
                     out.append({"name": f"faster-whisper-{size}", "file": str(mb), "bytes": mb.stat().st_size, "sha256": h,
-                                "license": "MIT (Systran/OpenAI Whisper)", "purpose": "speech-to-text"})
+                                "license": "MIT (Systran/OpenAI Whisper)", "purpose": "speech-to-text",
+                                "registry_sha256": None, "matches_registry": None})
                     break
     except Exception:
         pass

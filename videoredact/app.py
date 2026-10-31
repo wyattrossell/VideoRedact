@@ -106,6 +106,19 @@ def selftest(media: str | None = None) -> int:
                 for n in reg.MODELS}
     step("detection models", _models)
 
+    def _integrity():
+        """Every installed model file must be the published one (registry SHA-256): a truncated
+        copy or a swapped file would run without error and detect worse, or differently."""
+        from videoredact.vision import models as reg
+        res = reg.verify_models()
+        bad = [n for n, ok in res.items() if ok is False]
+        if bad:
+            raise RuntimeError("model file(s) differ from the published hash: " + ", ".join(bad))
+        pinned = sum(1 for ok in res.values() if ok)
+        unpinned = [n for n, ok in res.items() if ok is None]
+        return f"{pinned} model file(s) match the registry hashes" + (f"; unpinned: {', '.join(unpinned)}" if unpinned else "")
+    step("model integrity (sha256)", _integrity)
+
     def _face():
         from videoredact.vision import models as reg
         if not reg.is_available("yunet"):

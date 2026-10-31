@@ -115,3 +115,17 @@ C:\dev\venv-train\Scripts\python bench\eval_openvocab.py bench\reference\X_origi
 
 The fine-tuning path (OWLv2 pseudo-labels -> YOLOX-tiny -> `yolox_tiny_doc.onnx`) lives in
 `train/`; results and why it is not shipped yet are in `results/REFERENCE_TANYARD.md`.
+
+## 8. Re-identification attack on an export
+
+```powershell
+C:\dev\venv-videoredact\Scripts\python bench\reid_attack.py --source X.mp4 --redacted X_REDACTED.mp4 --project X.vrproj --out bench\results\reid_X.json
+```
+
+Attacks the redacted file the way an adversary holding the original would: faces are found
+and SFace is aligned on the *original*, then run on the *redacted* pixels. Reports how many
+confirmed face-frames are still re-identifiable (at the app's same-person threshold and at the
+stricter 0.55), still detectable as a face, or untouched (a pipeline miss), after a control
+check that the recogniser can match unredacted faces of the same person in that clip (if it
+cannot, the tool refuses to grade). Faces no enabled track covers count as "left visible", not
+as leaks. Results and the reading of them: `results/REID_ATTACK.md`.

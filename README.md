@@ -22,7 +22,7 @@ ordinary Windows PC (no GPU required). MIT licensed.
 - Export verification: faces are re-detected in the redacted output and any
   left visible are listed with timestamps before you release the file.
 - Fix a track by dragging its box; the correction becomes a keyframe.
-- Styles per region: solid black, blur, pixelate; rectangle or ellipse.
+- Styles per region: solid black or solid blue box; rectangle, ellipse or rounded.
 
 **Evidence handling**
 - Preview is a faithful rendering of the export (same code path).
@@ -33,8 +33,9 @@ ordinary Windows PC (no GPU required). MIT licensed.
   thresholds, every track's frame ranges and boxes, every manual edit; self-hashed,
   hash printed in the PDF). The original is never modified: its SHA-256 is taken at
   open and re-checked at export.
-- Redaction is irreversible: solid black by default; pixelate uses 16 px+ blocks;
-  "blur" is a heavy blur (6 samples across). No light Gaussian blur.
+- Redaction is irreversible: every style is a solid fill (black by default, or blue).
+  Blur and pixelate were withdrawn in 0.1.19 after the re-identification bench
+  (bench/results/REID_ATTACK.md) measured both weaker than a solid box.
 - Fully offline: no telemetry, no cloud calls, no model downloads at runtime
   (models are bundled; OpenVINO's telemetry package is excluded). Prove it with
   `VideoRedact.exe --selftest --offline-check <file>`. See docs/CJIS_COMPLIANCE.md.
@@ -132,7 +133,7 @@ videoredact/
   core/model.py       data model: transcript, redactions, tracks, project (.vrproj JSON)
   core/media.py       ffmpeg discovery, probe, audio decode, FrameReader
   core/audio_redact.py  beep/silence/tone/noise rendering
-  core/video_redact.py  black/blur/pixelate rendering
+  core/video_redact.py  black/blue box rendering (blur/pixelate kept for the bench only)
   core/export.py      export pipeline (OpenCV -> FFmpeg pipe), sidecars
   core/report.py      CSV + PDF report
   audio/transcribe.py faster-whisper wrapper, word/phrase matching

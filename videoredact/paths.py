@@ -135,7 +135,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 
-SETTINGS_REV = 2   # bump with every entry added to Settings._migrate()
+SETTINGS_REV = 3   # bump with every entry added to Settings._migrate()
 
 
 class Settings(dict):
@@ -161,7 +161,14 @@ class Settings(dict):
             self["detect_head"] = False
             self["detect_precise"] = True
             self["settings_rev"] = 2
-        if rev < 2:
+        if rev < 3:
+            # 0.1.19: blur and pixelate are no longer offered (solid boxes only)
+            if self.get("default_video_style") in ("blur", "pixelate"):
+                self["default_video_style"] = "black"
+            if self.get("last_box_style") in ("blur", "pixelate"):
+                self["last_box_style"] = None
+            self["settings_rev"] = 3
+        if rev < SETTINGS_REV:
             try:
                 self.save()
             except Exception:

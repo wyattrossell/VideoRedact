@@ -13,8 +13,7 @@ from videoredact.core.model import AudioStyle, Project, Shape, VideoStyle, as_en
 
 AUDIO_STYLE_NAMES = {AudioStyle.BEEP: "Beep", AudioStyle.SILENCE: "Silence", AudioStyle.LOW_TONE: "Low tone",
                      AudioStyle.NOISE: "Noise"}
-VIDEO_STYLE_NAMES = {VideoStyle.BLACK: "Black box (recommended)", VideoStyle.BLUR: "Heavy blur (not for text)",
-                     VideoStyle.PIXELATE: "Pixelate (16 px+ blocks)"}
+VIDEO_STYLE_NAMES = {VideoStyle.BLACK: "Black box (recommended)", VideoStyle.BLUE: "Blue box"}
 
 
 def _fmt(t: float) -> str:

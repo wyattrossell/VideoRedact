@@ -127,6 +127,33 @@ def test_blur_destroys_detail():
     assert np.abs(frame[:20, :20].astype(int) - small[0, 0].astype(int)).max() < 40
 
 
+def test_blue_box_is_a_solid_fill():
+    frame = _roi(h=40, w=60)
+    video_redact.apply_box(frame, BBox(0, 0, 1, 1), VideoStyle.BLUE)
+    assert {tuple(c) for c in frame.reshape(-1, 3)} == {video_redact.BLUE_BGR}
+
+
+def test_retired_styles_become_black_when_a_project_is_opened(tmp_path):
+    """Blur and pixelate were withdrawn on 2026-11-02; an old project that used them must still
+    open, come out as black boxes, and say so in its audit log."""
+    import json
+    from videoredact.core.model import MediaInfo, Project, Span, VideoTrack
+    p = Project(media=MediaInfo(path="x.mp4", fps=30, frame_count=30, has_video=True))
+    p.default_video_style = VideoStyle.PIXELATE
+    p.add_video_track(VideoTrack(label="face", style=VideoStyle.BLUR, spans=[Span(0, 9, {0: BBox(.1, .1, .2, .2)})]))
+    p.add_video_track(VideoTrack(label="screen", style=VideoStyle.BLACK, spans=[Span(0, 9, {0: BBox(.5, .5, .2, .2)})]))
+    f = tmp_path / "old.vrproj"
+    f.write_text(json.dumps(p.to_dict()), encoding="utf-8")
+    q = Project.load(f)
+    assert q.default_video_style is VideoStyle.BLACK
+    assert [t.style for t in q.video_tracks] == [VideoStyle.BLACK, VideoStyle.BLACK]
+    assert q.audit_log[-1].action == "video_style_retired" and "pixelate" in q.audit_log[-1].details
+    # saving and reopening the converted project adds nothing more
+    q.save(f)
+    r = Project.load(f)
+    assert sum(e.action == "video_style_retired" for e in r.audit_log) == 1
+
+
 def test_default_style_is_solid():
     assert Project().default_video_style == VideoStyle.BLACK
     from videoredact.paths import DEFAULT_SETTINGS

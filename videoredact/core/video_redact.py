@@ -1,9 +1,11 @@
-"""Apply video redactions (black box / blur / pixelate, rect or ellipse) to frames.
+"""Apply video redactions (black or blue box; rect, ellipse or rounded) to frames.
 
-Blur and pixelate strengths scale with the box size so a small face and a
-large monitor are both unrecognizable. Pixelate uses a coarse block grid
-(default ~8 blocks across the box); blur uses a kernel ~1/4 of the box size
-applied twice. Both are irreversible at these strengths.
+The program offers solid fills only (decision of 2026-11-02): a solid box leaves nothing to
+recover. Blur and pixelate are kept here for the re-identification bench
+(bench/reid_attack.py) and for the irreversibility tests; a project that used them is
+converted to black when it is opened (core/model.py Project.retire_styles). Their strengths
+scale with the box size: pixelate uses a coarse block grid (default ~8 blocks across the box,
+never under 16 px), blur averages the region down to ~6 samples across.
 """
 from __future__ import annotations
 
@@ -18,12 +20,17 @@ PIXELATE_BLOCKS = 8     # blocks across the box's shorter side ...
 PIXELATE_MIN_BLOCK = 16  # ... but never smaller than this many output pixels per block (irreversibility floor)
 BLUR_FRACTION = 0.25    # kernel size as fraction of the box's shorter side
 BLUR_DOWNSCALE = 6      # heavy blur: the region is reduced to at most this many pixels across before blurring
+BLUE_BGR = (180, 70, 20)  # "blue box": a solid fill like black, in a colour that reads as a deliberate redaction
 
 
 def _region_styled(roi: np.ndarray, style: VideoStyle) -> np.ndarray:
     h, w = roi.shape[:2]
     if style == VideoStyle.BLACK:
         return np.zeros_like(roi)
+    if style == VideoStyle.BLUE:
+        out = np.empty_like(roi)
+        out[:] = BLUE_BGR
+        return out
     short = max(1, min(h, w))
     if style == VideoStyle.PIXELATE:
         # block size = short side / PIXELATE_BLOCKS, but at least PIXELATE_MIN_BLOCK px: a 30 px

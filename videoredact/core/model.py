@@ -43,8 +43,15 @@ class AudioStyle(str, Enum):
 
 class VideoStyle(str, Enum):
     BLACK = "black"
+    BLUE = "blue"
+    # Retired from the program on 2026-11-02 (Wyatt: solid boxes only; the re-identification
+    # attack in bench/results/REID_ATTACK.md showed both measurably weaker than a solid fill).
+    # They still parse so an old project opens, and are converted to BLACK when it is loaded.
     BLUR = "blur"
     PIXELATE = "pixelate"
+
+
+RETIRED_VIDEO_STYLES = {VideoStyle.BLUR, VideoStyle.PIXELATE}
 
 
 class Shape(str, Enum):
@@ -542,7 +549,7 @@ class Project:
     def from_dict(d: dict) -> "Project":
         if d.get("format") != "videoredact-project":
             raise ValueError("Not a VideoRedact project file")
-        return Project(
+        p = Project(
             media=MediaInfo.from_dict(d.get("media", {})),
             transcript=[Segment.from_dict(s) for s in d.get("transcript", [])],
             transcript_model=d.get("transcript_model", ""),
@@ -556,6 +563,25 @@ class Project:
             modified_at=d.get("modified_at", _now()),
             audit_log=[LogEntry(**e) for e in d.get("audit_log", [])],
         )
+        p.retire_styles()
+        return p
+
+    def retire_styles(self) -> list[str]:
+        """Blur and pixelate are no longer offered (2026-11-02): a project that used them is
+        switched to a black box, and the change is written to its audit log so the reviewer
+        can see what happened. Returns a description of each change made."""
+        changed = []
+        if as_enum(VideoStyle, self.default_video_style) in RETIRED_VIDEO_STYLES:
+            changed.append(f"project default {as_enum(VideoStyle, self.default_video_style).value}")
+            self.default_video_style = VideoStyle.BLACK
+        for t in self.video_tracks:
+            st = as_enum(VideoStyle, t.style)
+            if st in RETIRED_VIDEO_STYLES:
+                changed.append(f"{t.label} {t.id} {st.value}")
+                t.style = VideoStyle.BLACK
+        if changed:
+            self.log("video_style_retired", "blur/pixelate are no longer offered; now black box: " + "; ".join(changed))
+        return changed
 
     def save(self, path: str | Path) -> None:
         path = Path(path)

@@ -63,7 +63,7 @@ def test_project_roundtrip(tmp_path):
     p = Project(media=MediaInfo(path="x.mp4", fps=30, frame_count=300, has_video=True), author="tester")
     p.transcript = [seg("hello world")]
     p.add_audio_redaction(AudioRedaction(1.0, 2.0, "world", style=AudioStyle.SILENCE))
-    t = VideoTrack(label="face", style=VideoStyle.BLUR)
+    t = VideoTrack(label="face", style=VideoStyle.BLUE)
     t.add_keyframe(10, BBox(.1, .1, .2, .2))
     p.add_video_track(t)
     f = tmp_path / "p.vrproj"

@@ -64,6 +64,15 @@ operator chooses it as the output folder.
 
 * **Algorithm:** SHA-256 (hashlib), full file, computed in the program; the same value
   `certutil -hashfile <file> SHA256` or `Get-FileHash` produces.
+* **Variable-frame-rate sources (phone footage):** body cameras record at a constant rate;
+  phones usually do not, and a frame-indexed tool would let picture and audio drift on such a
+  file. When a file is opened (0.1.19) the first 600 frame timestamps are scanned; a
+  variable-rate file is offered a constant-rate working copy (video re-encoded near-lossless,
+  audio stream copied byte for byte, written atomically). The project and the manifest then
+  record the original's path and SHA-256 next to the copy's (`source.original_path`,
+  `source.original_sha256`, `source.normalized_from_vfr`, `source.variable_frame_rate_detected`),
+  and the project log carries `media_normalized`. Opening such a file as-is is logged as
+  `WARNING_variable_frame_rate`.
 * **Source:** hashed when the file is opened (stored in the project), re-hashed at export.
   `source.unchanged_since_open` in the manifest is `true`, `false` (the PDF then carries a
   warning and the project log an entry `WARNING_source_hash_changed`) or `null` (file opened
@@ -159,8 +168,8 @@ timestamp and Windows user, from the moment the file was opened).
 
 * The operator name in the manifest is whatever was typed into the project's "Author" field
   plus the Windows login; there is no separate authentication inside the program.
-* The manifest proves what the software did; it does not sign it. A hash chain into a
-  write-once evidence system is the agency's responsibility.
+* The manifest proves what the software did; it does not sign it (self-hashed, by decision of
+  2026-11-02). A hash chain into a write-once evidence system is the agency's responsibility.
 * Update checking (on by default, notification only) sends the standard HTTPS request headers
   (including a `VideoRedact/<version>` user agent) to GitHub. Nothing about the case is sent.
 * Transcription (speech-to-text) runs locally; its accuracy on body-camera audio is limited

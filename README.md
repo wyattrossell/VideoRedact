@@ -16,6 +16,8 @@ ordinary Windows PC (no GPU required). MIT licensed.
   people (YOLOX) every few frames, linked into tracks and *carried* by a
   tracker between detections so turned or blurred faces stay covered. Runs on
   several CPU cores in parallel.
+- Phone footage with a variable frame rate is offered a constant-rate working copy
+  when opened (audio copied unchanged; the original's hash stays on record).
 - Licence plates (open-image-models YOLOv9-t, MIT) are detected and kept only where
   they sit on a detected vehicle; a protected zone over the camera's timestamp
   overlay is never redacted, whatever covers it (Video menu to move or disable).

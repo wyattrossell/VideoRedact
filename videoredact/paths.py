@@ -134,6 +134,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "last_box_style": None,         # None = project default
     "edit_scope": "onward",         # dragging a box corrects: frame | onward | back | track (VideoTrack.apply_edit)
     "protect_overlay": True,        # new projects get a protected zone over the camera's timestamp overlay (never redacted)
+    "vfr_normalize": True,          # offer a constant-frame-rate working copy when a file (phone footage) is variable-rate
 }
 
 

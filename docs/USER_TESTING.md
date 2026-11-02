@@ -74,6 +74,10 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    measurably weaker, see docs/CJIS_COMPLIANCE.md section 9).
 7. **Audio redaction by range**: drag on the audio lane of the timeline to beep or silence a
    range without a transcript.
+7b. **Phone footage** (0.1.19): open a citizen's phone recording. If its frame rate is variable
+   the program offers a constant-rate copy (a minute or two for a long clip); accept it, then
+   check in the export that the audio stays in sync to the end. Tell us if the offer appears on
+   a body-cam file (it should not).
 8. **Export** (File → Export redacted media, Ctrl+E). Leave "Verify" on: the program re-detects faces in the finished
    file and lists any it still sees. Output files beside the video:
    - `<name>_REDACTED.mp4` (or your chosen name), SHA-256 in the report

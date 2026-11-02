@@ -18,7 +18,8 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QDockWidget, QFileDialog
 from videoredact import __version__, updater
 from videoredact.audio.pii import suggest_pii
 from videoredact.audio.transcribe import find_matches, words_in_range
-from videoredact.core.media import MEDIA_FILTER, FrameReader, decode_audio, probe, sha256_file
+from videoredact.core.media import (MEDIA_FILTER, FrameReader, decode_audio, nearest_standard_rate, normalize_cfr,
+                                    probe, sha256_file)
 from videoredact.core.model import (AudioRedaction, AudioStyle, BBox, Project, Shape, Span, VideoStyle, VideoTrack,
                                     Word, as_enum, default_overlay_zone)
 from videoredact.paths import settings
@@ -293,22 +294,35 @@ class MainWindow(QMainWindow):
         if p:
             self._load_media(p)
 
-    def _load_media(self, path: str) -> None:
+    def _load_media(self, path: str, original: Optional[tuple] = None) -> None:
+        """Open a media file. `original` = (path, sha256, normalize result) when `path` is the
+        constant-rate working copy just made from a variable-rate file."""
         settings["last_dir"] = str(Path(path).parent)
         settings.save()
         try:
-            info = probe(path)
+            info = probe(path, timing=True)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Cannot open", f"{path}\n\n{e}")
             return
         if not info.has_video and not info.has_audio:
             QMessageBox.critical(self, "Cannot open", "No audio or video stream found in this file.")
             return
+        if info.has_video and info.vfr and original is None and bool(settings.get("vfr_normalize", True)):
+            if self._offer_cfr_copy(path, info):
+                return                      # the copy is being made; _load_media runs again on it
         proj = Project(media=info, author=settings["author"],
                        default_audio_style=AudioStyle(settings["default_audio_style"]),
                        default_video_style=VideoStyle(settings["default_video_style"]),
                        beep_frequency=settings["beep_frequency"])
         proj.log("media_opened", f"{path} ({info.width}x{info.height} @ {info.fps:.3f} fps, {info.duration:.1f}s)")
+        if original is not None:
+            opath, ohash, norm = original
+            info.original_path, info.original_sha256, info.normalized, info.vfr = opath, ohash, True, True
+            proj.log("media_normalized", f"{opath} (sha256 {ohash[:16]}…) had a variable frame rate; this file is its "
+                                         f"constant-rate copy at {norm['fps']:g} fps, audio "
+                                         f"{'copied unchanged' if norm['audio_copied'] else 're-encoded (container refused a copy)'}")
+        elif info.has_video and info.vfr:
+            proj.log("WARNING_variable_frame_rate", f"opened as is (average {info.avg_fps:.2f} fps); picture and audio may drift in the export")
         if info.has_video and bool(settings.get("protect_overlay", True)):
             proj.add_protected_zone(default_overlay_zone())
         self._set_project(proj)
@@ -316,6 +330,52 @@ class MainWindow(QMainWindow):
         self.jobs.run("Hashing source file",
                       lambda prog, cancel, partial: sha256_file(path, lambda f: prog(f, "SHA-256 of source")),
                       lambda h: self._set_hash(proj, h))
+
+    def _offer_cfr_copy(self, path: str, info) -> bool:
+        """Phone footage is usually variable-rate; offer a constant-rate working copy. Returns
+        True when the copy job was started (the caller stops; the copy is opened when done)."""
+        fps = nearest_standard_rate(info.avg_fps or info.fps)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle("Variable frame rate")
+        box.setText(f"{Path(path).name} has a variable frame rate (average {info.avg_fps:.2f} fps). Phone recordings "
+                    "usually do. VideoRedact works frame by frame at one constant rate, so on this file the picture "
+                    "and the audio could drift apart in the export.")
+        box.setInformativeText(f"Make a constant-rate working copy at {fps:g} fps first? The original is not modified; "
+                               "its SHA-256 and the copy's are both recorded in the project and the audit manifest. "
+                               "The audio is copied unchanged.")
+        b_copy = box.addButton("Make the copy and open it", QMessageBox.AcceptRole)
+        box.addButton("Open as is", QMessageBox.RejectRole)
+        b_cancel = box.addButton(QMessageBox.Cancel)
+        box.exec()
+        if box.clickedButton() is b_cancel:
+            return True                         # nothing opened
+        if box.clickedButton() is not b_copy:
+            return False
+        src = Path(path)
+        dst, _ = QFileDialog.getSaveFileName(self, "Save the constant-rate copy as", str(src.with_name(src.stem + "_CFR.mp4")),
+                                             "MP4 video (*.mp4)")
+        if not dst:
+            return True
+        if Path(dst).resolve() == src.resolve():
+            QMessageBox.warning(self, "Variable frame rate", "The copy cannot replace the original. Choose another name.")
+            return True
+
+        def job(prog, cancel, partial):
+            prog(0.0, "Hashing the original…")
+            h = sha256_file(path, lambda f: prog(0.1 * f, "SHA-256 of the original"))
+            norm = normalize_cfr(path, dst, fps, progress=lambda p, m: prog(0.1 + 0.9 * p, m), cancel=cancel)
+            return (path, h, norm)
+
+        def done(res):
+            if res is None:
+                return
+            self._load_media(res[2]["path"], original=res)
+            self.statusBar().showMessage(f"Opened the constant-rate copy ({res[2]['fps']:g} fps, {res[2]['frames']} frames); "
+                                         f"the original and its hash are recorded in the project.", 10000)
+
+        self.jobs.run("Constant-rate copy", job, done)
+        return True
 
     def _set_hash(self, proj: Project, h: str) -> None:
         if self.project is proj:
@@ -1324,7 +1384,8 @@ class MainWindow(QMainWindow):
                                                assoc=settings.get("assoc", "botsort"),
                                                lead_in=int(settings.get("lead_frames", 15)),
                                                lead_out=int(settings.get("lead_frames", 15))),
-                            protect_overlay=bool(settings.get("protect_overlay", True)))
+                            protect_overlay=bool(settings.get("protect_overlay", True)),
+                            normalize_vfr=bool(settings.get("vfr_normalize", True)))
 
         def job(prog, cancel, partial):
             return run_batch(opts, prog, cancel)

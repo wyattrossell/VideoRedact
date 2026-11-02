@@ -202,14 +202,118 @@ def metadata_carried(source: dict[str, dict[str, str]], output: dict[str, dict[s
     return hits
 
 
+STANDARD_RATES = (23.976, 24.0, 25.0, 29.97, 30.0, 48.0, 50.0, 59.94, 60.0)
+TIMING_FRAMES = 600          # frames scanned for the variable-frame-rate check (about 20 s of 30 fps footage)
+VFR_DEVIATION = 0.20         # an interval this far from the median (fraction) counts as irregular ...
+VFR_MIN_IRREGULAR = 0.02     # ... and this fraction of irregular intervals makes the file variable-rate
+
+
+def frame_timing(path: str | Path, n: int = TIMING_FRAMES) -> dict:
+    """Decode the first `n` frames with FFmpeg's showinfo filter and judge from their
+    presentation timestamps whether the frame rate is constant. Body cameras record
+    constant-rate files; phones record variable-rate ones (intervals that wander between 16
+    and 50 ms), and a frame-indexed tool would let the picture and the audio drift apart on
+    those. (OpenCV's CAP_PROP_POS_MSEC is not usable here: it reports the nominal rate, so a
+    jittered file looked perfectly regular through it.) Returns frames scanned, median/min/max
+    interval (ms), the fraction of irregular intervals, the average rate, and `vfr`."""
+    out = {"frames": 0, "median_ms": 0.0, "min_ms": 0.0, "max_ms": 0.0, "irregular_frac": 0.0,
+           "avg_fps": 0.0, "vfr": False}
+    try:
+        res = run_ffmpeg(["-i", str(path), "-an", "-sn", "-dn", "-map", "0:v:0", "-frames:v", str(max(2, n)),
+                          "-fps_mode", "passthrough", "-vf", "showinfo", "-f", "null", "-"],
+                         text=True, encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        return out
+    ts = [float(m.group(1)) * 1000.0 for m in re.finditer(r"pts_time:\s*(-?[\d.]+)", res.stderr or "")]
+    out["frames"] = len(ts)
+    if len(ts) < 10:
+        return out
+    d = np.diff(np.asarray(ts, dtype=np.float64))
+    d = d[d > 0]
+    if len(d) < 8:
+        return out
+    med = float(np.median(d))
+    irregular = float(np.mean(np.abs(d - med) > VFR_DEVIATION * med))
+    out.update(median_ms=med, min_ms=float(d.min()), max_ms=float(d.max()), irregular_frac=irregular,
+               avg_fps=1000.0 / float(d.mean()), vfr=irregular > VFR_MIN_IRREGULAR)
+    return out
+
+
+def nearest_standard_rate(fps: float) -> float:
+    """The broadcast/camera rate closest to a measured average (29.83 -> 29.97), or the
+    measured rate itself when nothing standard is within 8 %."""
+    if fps <= 0:
+        return 30.0
+    best = min(STANDARD_RATES, key=lambda r: abs(r - fps))
+    return best if abs(best - fps) / best <= 0.08 else round(fps, 3)
+
+
+def normalize_cfr(src: str | Path, dst: str | Path, fps: float,
+                  progress: Optional[Callable[[float, str], None]] = None,
+                  cancel: Optional[Callable[[], bool]] = None, crf: int = 14) -> dict:
+    """Write a constant-frame-rate working copy of a variable-rate file: the video is
+    re-encoded (libx264, near-lossless CRF 14) with frames duplicated or dropped to hit `fps`,
+    the audio stream is copied byte for byte (re-encoded only if the container refuses the
+    copy, which the result reports). Written to `<name>.part.mp4` and renamed when complete.
+    The original is never modified."""
+    src, dst = str(src), Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    part = dst.with_name(dst.stem + ".part" + dst.suffix)
+    info = probe(src)
+    duration = info.duration or 0.0
+
+    def run(audio_args: list[str]) -> subprocess.CompletedProcess:
+        cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-nostats", "-y", "-i", src,
+               "-map", "0:v:0", "-map", "0:a?", "-fps_mode", "cfr", "-r", f"{fps:.3f}",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p",
+               *audio_args, "-movflags", "+faststart", "-progress", "pipe:1", str(part)]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=_CREATE_NO_WINDOW)
+        err = b""
+        try:
+            for raw in proc.stdout:   # type: ignore[union-attr]
+                line = raw.decode("utf-8", "replace").strip()
+                if line.startswith("out_time_us=") and duration > 0 and progress:
+                    try:
+                        progress(min(0.99, int(line.split("=", 1)[1]) / 1e6 / duration),
+                                 f"Making a constant-rate copy ({fps:g} fps)…")
+                    except ValueError:
+                        pass
+                if cancel and cancel():
+                    proc.kill()
+                    proc.wait()
+                    part.unlink(missing_ok=True)
+                    raise RuntimeError("cancelled")
+            err = proc.stderr.read() if proc.stderr else b""   # type: ignore[union-attr]
+            proc.wait()
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+        return subprocess.CompletedProcess(cmd, proc.returncode, b"", err)
+
+    res = run(["-c:a", "copy"])
+    audio_copied = True
+    if res.returncode != 0:
+        part.unlink(missing_ok=True)
+        res = run(["-c:a", "aac", "-b:a", "256k"])
+        audio_copied = False
+        if res.returncode != 0:
+            part.unlink(missing_ok=True)
+            raise RuntimeError("FFmpeg could not write the constant-rate copy: " + res.stderr.decode("utf-8", "replace")[-800:])
+    os.replace(part, dst)
+    out = probe(str(dst))
+    return {"path": str(dst), "fps": fps, "frames": out.frame_count, "duration": out.duration,
+            "audio_copied": audio_copied, "sha256": sha256_file(dst)}
+
+
 _DUR_RE = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 _VID_RE = re.compile(r"Stream #\d+:\d+.*?: Video: (\w+).*?,\s*(\d{2,5})x(\d{2,5}).*?(?:,\s*([\d.]+) fps)?")
 _AUD_RE = re.compile(r"Stream #\d+:\d+.*?: Audio: (\w+).*?,\s*(\d+) Hz,\s*([^,]+)")
 
 
-def probe(path: str | Path, compute_hash: bool = False) -> MediaInfo:
+def probe(path: str | Path, compute_hash: bool = False, timing: bool = False) -> MediaInfo:
     """Probe a media file using ffmpeg's stderr banner plus OpenCV for exact
-    frame counts. Works for both video and audio-only files."""
+    frame counts. Works for both video and audio-only files. `timing` adds the
+    variable-frame-rate scan (frame_timing; ~1 s), used when a file is opened."""
     path = str(path)
     info = MediaInfo(path=path)
     res = run_ffmpeg(["-i", path], text=True, encoding="utf-8", errors="replace")
@@ -256,6 +360,9 @@ def probe(path: str | Path, compute_hash: bool = False) -> MediaInfo:
             info.frame_count = int(round(info.duration * info.fps))
         if not info.duration and info.fps and info.frame_count:
             info.duration = info.frame_count / info.fps
+        if timing:
+            t = frame_timing(path)
+            info.vfr, info.avg_fps = bool(t["vfr"]), float(t["avg_fps"])
     if compute_hash:
         info.sha256 = sha256_file(path)
     return info

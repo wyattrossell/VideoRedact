@@ -169,7 +169,12 @@ def build_manifest(project: Project, result: dict[str, Any], export_opts: Any) -
                    "unchanged_since_open": result.get("source_unchanged"),
                    "duration_s": project.media.duration, "width": project.media.width, "height": project.media.height,
                    "fps": project.media.fps, "frame_count": project.media.frame_count,
-                   "video_codec": project.media.video_codec, "audio_codec": project.media.audio_codec},
+                   "video_codec": project.media.video_codec, "audio_codec": project.media.audio_codec,
+                   # phone footage: the file redacted is a constant-rate copy of this original
+                   "variable_frame_rate_detected": project.media.vfr,
+                   "normalized_from_vfr": project.media.normalized,
+                   "original_path": project.media.original_path or None,
+                   "original_sha256": project.media.original_sha256 or None},
         "output": {"path": result.get("output"), "sha256": result.get("output_sha256"),
                    "clip_range_s": list(result["clip"]) if result.get("clip") else None,
                    "project_file": result.get("project"), "project_sha256": sha256_file(result["project"]) if result.get("project") and Path(result["project"]).exists() else None,

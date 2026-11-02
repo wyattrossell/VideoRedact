@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .export import ExportOptions, export_project
-from .media import FrameReader, probe, sha256_file
+from .media import FrameReader, nearest_standard_rate, normalize_cfr, probe, sha256_file
 from .model import AudioStyle, Project, VideoStyle, default_overlay_zone
 
 ProgressCB = Callable[[float, str], None]
@@ -39,6 +39,7 @@ class BatchOptions:
     preset: str = "veryfast"
     detect_kwargs: dict = field(default_factory=dict)   # extra AutoDetectOptions fields
     protect_overlay: bool = True             # add the default protected zone (camera timestamp) to every project
+    normalize_vfr: bool = True               # variable-rate files get a constant-rate working copy first (<stem>_CFR.mp4)
 
 
 @dataclass
@@ -82,13 +83,32 @@ def run_batch(opts: BatchOptions, progress: Optional[ProgressCB] = None, cancel:
         t0 = time.time()
         res = BatchItemResult(file=f, ok=False)
         try:
-            info = probe(f)
+            info = probe(f, timing=True)
+            original = None
+            if info.has_video and info.vfr and opts.normalize_vfr:
+                out_dir = Path(opts.out_dir) if opts.out_dir else Path(f).parent
+                out_dir.mkdir(parents=True, exist_ok=True)
+                cfr = unique_path(out_dir / (Path(f).stem + "_CFR.mp4"))
+                prog(0.0, "variable frame rate: making a constant-rate copy")
+                orig_hash = sha256_file(f)
+                norm = normalize_cfr(f, cfr, nearest_standard_rate(info.avg_fps or info.fps),
+                                     progress=lambda p, m: prog(0.04 * p, m), cancel=cancel)
+                original = (f, orig_hash, norm)
+                info = probe(str(cfr), timing=True)
+                info.original_path, info.original_sha256, info.normalized = f, orig_hash, True
+                info.vfr = True
             proj = Project(media=info, author=opts.author,
                            default_video_style=VideoStyle(opts.default_video_style),
                            default_audio_style=AudioStyle(opts.default_audio_style))
             proj.log("batch_started", f)
-            prog(0.0, "hashing source")
-            info.sha256 = sha256_file(f)
+            if original is not None:
+                proj.log("media_normalized", f"{original[0]} (sha256 {original[1][:16]}…) had a variable frame rate; "
+                                             f"working copy {info.path} at {original[2]['fps']:g} fps, "
+                                             f"audio {'copied' if original[2]['audio_copied'] else 're-encoded'}")
+            elif info.vfr:
+                proj.log("WARNING_variable_frame_rate", "opened as is; picture and audio may drift in the export")
+            prog(0.05, "hashing source")
+            info.sha256 = sha256_file(info.path)
             if info.has_video and opts.protect_overlay:
                 proj.add_protected_zone(default_overlay_zone())
             if info.has_video:
@@ -102,6 +122,7 @@ def run_batch(opts: BatchOptions, progress: Optional[ProgressCB] = None, cancel:
                 res.tracks = len(tracks)
             out_dir = Path(opts.out_dir) if opts.out_dir else Path(f).parent
             out_dir.mkdir(parents=True, exist_ok=True)
+            f = info.path if original is None else f   # names below keep the original's stem
             # Never replace a file a person may have hand-reviewed: <stem>.vrproj is also the default
             # "Save project as" name, so an existing one gets a numbered sibling instead.
             proj_path = unique_path(out_dir / (Path(f).stem + ".vrproj"))

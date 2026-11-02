@@ -516,6 +516,15 @@ class MediaInfo:
     video_codec: str = ""
     audio_codec: str = ""
     sha256: str = ""
+    # Variable frame rate (phone recordings): detected when the file is opened with a timing
+    # scan (core/media.py frame_timing). The program works frame by frame at one rate, so a VFR
+    # file is normalised to a constant-rate working copy; the original and its hash stay on
+    # record here and in the audit manifest.
+    vfr: bool = False
+    avg_fps: float = 0.0
+    original_path: str = ""        # set when `path` is a constant-rate copy of another file
+    original_sha256: str = ""
+    normalized: bool = False
 
     def time_to_frame(self, t: float) -> int:
         return int(round(t * self.fps)) if self.fps else 0

@@ -103,3 +103,44 @@ def test_project_log_records_author_time_and_persists(tmp_path):
     assert [(x.action, x.user, x.details) for x in q.audit_log] == [(x.action, x.user, x.details) for x in p.audit_log]
     q.log("reopened", "")
     assert len(q.audit_log) == 3 and q.audit_log[-1].ts >= q.audit_log[0].ts
+
+
+# ------------------------------------------------------------------ edit scope ----
+def _track_moving_right():
+    from videoredact.core.model import BBox, Span, VideoTrack
+    t = VideoTrack(label="face")
+    t.spans = [Span(0, 40, {0: BBox(0.10, 0.50, 0.10, 0.10), 20: BBox(0.30, 0.50, 0.10, 0.10), 40: BBox(0.50, 0.50, 0.10, 0.10)})]
+    return t
+
+
+def test_apply_edit_scopes_carry_the_same_correction():
+    """A box dragged up by 0.1 and doubled in height on frame 20: 'onward' corrects frames 20 and 40
+    by the same offset and scale and leaves frame 0 alone; 'back' the opposite; 'track' both;
+    'frame' only sets the keyframe (the old behaviour)."""
+    from videoredact.core.model import BBox
+    new = BBox(0.30, 0.40, 0.10, 0.20)          # same centre x, centre y 0.55 -> 0.50 (up 0.05), h x2
+    for scope, expect_changed, moved in (("frame", 0, set()), ("onward", 1, {40}), ("back", 1, {0}), ("track", 2, {0, 40})):
+        t = _track_moving_right()
+        n = t.apply_edit(20, new, scope)
+        assert n == expect_changed, scope
+        kf = t.spans[0].keyframes
+        assert kf[20].to_list() == new.to_list()
+        for k in (0, 40):
+            b = kf[k]
+            if k in moved:
+                assert abs(b.h - 0.20) < 1e-6 and abs(b.w - 0.10) < 1e-6, (scope, k)
+                assert abs(b.center()[1] - 0.50) < 1e-6 and abs(b.center()[0] - (0.15 if k == 0 else 0.55)) < 1e-6, (scope, k)
+            else:
+                assert b.to_list() == [0.1 if k == 0 else 0.5, 0.5, 0.1, 0.1], (scope, k)
+    # interpolated frames between an untouched and a corrected keyframe ramp between the two
+    t = _track_moving_right()
+    t.apply_edit(20, new, "onward")
+    mid = t.bbox_at(10)
+    assert 0.10 < mid.h < 0.20
+
+
+def test_apply_edit_on_a_gap_frame_extends_and_corrects_nothing_else():
+    from videoredact.core.model import BBox
+    t = _track_moving_right()
+    n = t.apply_edit(60, BBox(0.6, 0.5, 0.1, 0.1), "onward")
+    assert n == 0 and t.bbox_at(60) is not None and t.spans[0].keyframes[40].to_list() == [0.5, 0.5, 0.1, 0.1]

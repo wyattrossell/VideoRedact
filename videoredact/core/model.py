@@ -377,6 +377,45 @@ class VideoTrack:
         nearest.keyframes[frame] = bbox
         self.merge_spans()
 
+    def apply_edit(self, frame: int, bbox: BBox, scope: str = "frame") -> int:
+        """A box correction made on `frame`, applied with the chosen scope (idea from
+        PrivacyCam's thisMoment / fromHere / entireTrack edit scopes, extended backwards at
+        Wyatt's request, 2026-11-02):
+
+          frame    only this frame gets a keyframe (the old behaviour)
+          onward   this frame and every keyframe after it
+          back     this frame and every keyframe before it
+          track    every keyframe of the track
+
+        Other keyframes are not replaced by the new box but *corrected by the same change*:
+        the box's centre moves by the same offset and its size scales by the same factors,
+        so a tracked object keeps its motion while a systematic error (box too low, too
+        small) is fixed everywhere at once. Returns the number of keyframes changed
+        (excluding the one set on `frame`)."""
+        scope = scope or "frame"
+        old = self.bbox_at(frame)
+        self.set_keyframe_extend(frame, bbox)
+        if scope == "frame" or old is None:
+            return 0
+        (ocx, ocy), (ncx, ncy) = old.center(), bbox.center()
+        dcx, dcy = ncx - ocx, ncy - ocy
+        sw = bbox.w / old.w if old.w > 1e-6 else 1.0
+        sh = bbox.h / old.h if old.h > 1e-6 else 1.0
+        n = 0
+        for s in self.spans:
+            for k, b in list(s.keyframes.items()):
+                if k == frame:
+                    continue
+                if scope == "onward" and k < frame:
+                    continue
+                if scope == "back" and k > frame:
+                    continue
+                cx, cy = b.center()
+                w, h = b.w * sw, b.h * sh
+                s.keyframes[k] = BBox(cx + dcx - w / 2, cy + dcy - h / 2, w, h).clamp()
+                n += 1
+        return n
+
     def remove_keyframe(self, frame: int) -> None:
         for s in self.spans:
             if frame in s.keyframes:

@@ -143,3 +143,36 @@ def test_transport_keys_work_from_any_panel(app):
     app.processEvents()
     assert w.transcript.search.cursorPosition() == 1 and w.player.current_frame() == f0 + 3 - int(w.fps)
     w.close()
+
+
+def test_box_edit_scope_from_toolbar_and_undo(app):
+    """Dragging a box with 'from here to the end of the track' selected corrects the later
+    keyframes by the same offset; Ctrl+Z (undo) puts the previous boxes back."""
+    from videoredact.ui.main_window import MainWindow
+    from videoredact.paths import settings
+    w = MainWindow()
+    w._load_media("tests/data/sample.mp4")
+    app.processEvents()
+    p = w.project
+    t = VideoTrack(label="face", spans=[Span(0, 60, {0: BBox(.1, .5, .1, .1), 30: BBox(.3, .5, .1, .1), 60: BBox(.5, .5, .1, .1)})])
+    p.add_video_track(t)
+    w._project_changed()
+    w.player.pause()
+    w.seek(30 / w.fps + 0.001)
+    app.processEvents()
+    assert w.current_frame() == 30
+    w.c_scope.setCurrentIndex(list(w.c_scope.itemData(i) for i in range(w.c_scope.count())).index("onward"))
+    assert settings.get("edit_scope") == "onward"
+    w.on_box_edited(t.id, BBox(.3, .4, .1, .1))          # moved up by 0.1 on frame 30
+    kf = t.spans[0].keyframes
+    assert kf[30].to_list() == [.3, .4, .1, .1] and kf[60].to_list() == [.5, .4, .1, .1] and kf[0].to_list() == [.1, .5, .1, .1]
+    assert p.audit_log[-1].action == "keyframe_edited" and "scope onward" in p.audit_log[-1].details
+    w.undo_delete()
+    assert t.spans[0].keyframes[60].to_list() == [.5, .5, .1, .1] and t.spans[0].keyframes[30].to_list() == [.3, .5, .1, .1]
+    w.c_scope.setCurrentIndex(0)                          # this frame only
+    w.on_box_edited(t.id, BBox(.3, .45, .1, .1))
+    assert t.spans[0].keyframes[60].to_list() == [.5, .5, .1, .1]
+    w.jobs.cancel_all()
+    w.jobs.wait_all(10000)
+    w.dirty = False                                       # closeEvent would otherwise block on the save prompt
+    w.close()

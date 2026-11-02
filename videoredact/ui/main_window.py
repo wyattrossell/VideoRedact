@@ -32,6 +32,8 @@ from .workers import run_task
 from .jobs import JobsPanel
 
 PROJECT_FILTER = "VideoRedact project (*.vrproj)"
+EDIT_SCOPE_NAMES = {"frame": "this frame only", "onward": "from here to the end of the track",
+                    "back": "from the start of the track to here", "track": "the whole track"}
 
 
 def fmt_time(t: float) -> str:
@@ -217,6 +219,17 @@ class MainWindow(QMainWindow):
             self.c_vstyle.addItem(v, k)
         self.c_vstyle.currentIndexChanged.connect(self._default_styles_changed)
         tb.addWidget(self.c_vstyle)
+        tb.addSeparator()
+        tb.addWidget(QLabel("  Box edits apply to: "))
+        self.c_scope = QComboBox()
+        for key, text in EDIT_SCOPE_NAMES.items():
+            self.c_scope.addItem(text, key)
+        self.c_scope.setToolTip("When you drag or resize a box: fix only this frame, or carry the same correction "
+                                "(offset and size change) to the rest of the track. Ctrl+Z undoes an edit.")
+        cur_scope = str(settings.get("edit_scope", "onward"))
+        self.c_scope.setCurrentIndex(list(EDIT_SCOPE_NAMES).index(cur_scope) if cur_scope in EDIT_SCOPE_NAMES else 1)
+        self.c_scope.currentIndexChanged.connect(self._edit_scope_changed)
+        tb.addWidget(self.c_scope)
         tb.addSeparator()
         hint = QLabel("  Drag on the video to draw a box  ")
         hint.setStyleSheet("color: gray")
@@ -533,11 +546,11 @@ class MainWindow(QMainWindow):
         if kind == "replaced":
             if cur is None:
                 return
-            cur.spans, cur.note = t.spans, t.note
-            self.project.log("video_track_restored", f"{t.label} join undone")
+            cur.spans, cur.note, cur.source = t.spans, t.note, t.source
+            self.project.log("video_track_restored", f"{t.label} boxes restored (join or edit undone)")
             self._project_changed()
             self._select("video", t.id)
-            self.statusBar().showMessage(f"Undid the join on the '{t.label}' track.", 4000)
+            self.statusBar().showMessage(f"Restored the previous boxes of the '{t.label}' track.", 4000)
             return
         if cur is not None:
             return
@@ -951,16 +964,28 @@ class MainWindow(QMainWindow):
 
         self.jobs.run(f"Tracking '{label}'", job, done, on_partial=on_partial, on_cancel=on_cancel)
 
+    def edit_scope(self) -> str:
+        return str(self.c_scope.currentData() or "frame")
+
+    def _edit_scope_changed(self) -> None:
+        settings["edit_scope"] = self.edit_scope()
+        settings.save()
+
     def on_box_edited(self, tid: str, bbox: BBox) -> None:
         t = self.project.get_track(tid) if self.project else None
         if not t:
             return
         f = self.current_frame()
-        t.set_keyframe_extend(f, bbox)
+        scope = self.edit_scope()
+        self._push_undo(copy.deepcopy(t), kind="replaced")
+        n = t.apply_edit(f, bbox, scope)
         if t.source == "auto":
             t.source = "auto+edited"
-        self.project.log("keyframe_edited", f"{t.label} frame {f}")
+        self.project.log("keyframe_edited", f"{t.label} frame {f}, scope {scope}, {n} other keyframe(s) corrected")
         self._project_changed()
+        if scope != "frame":
+            self.statusBar().showMessage(f"Box corrected on this frame and {n} other keyframe(s) ({EDIT_SCOPE_NAMES[scope]}). "
+                                         "Ctrl+Z undoes; the toolbar's 'Box edits apply to' changes the scope.", 6000)
 
     def _selected_track(self) -> Optional[VideoTrack]:
         kind, rid = self.panel.current()
@@ -1379,10 +1404,12 @@ disable or delete them all at once, or keep only that person redacted.<br>
 <b>4. Review:</b> Play with <i>Preview redactions</i> on: you see the boxes and hear the beep/silence exactly as exported.
 N / Shift+N step through the redactions, Delete removes one (Ctrl+Z brings it back), E disables it without deleting,
 X splits a track at the playhead, [ ] trim it, = extends it, T re-tracks a selected box from the playhead.
-Drag a box to fix its position: that adds a keyframe.<br>
+Drag or resize a box to fix it. The toolbar's <i>Box edits apply to</i> decides how far the fix reaches: this frame only,
+from here to the end of the track (default), from the start to here, or the whole track. The other keyframes keep their
+own motion and get the same shift and size change; Ctrl+Z undoes the edit.<br>
 <b>5. Export</b> (Ctrl+E): writes the redacted file plus a PDF/CSV report with SHA-256 hashes and the project file.<br><br>
 <b>Keys:</b> Space play/pause · ←/→ frame step (Shift: 1 s) · N / Shift+N next/previous redaction · F / Shift+F next/previous
-flagged track · Delete remove selected · Ctrl+Z undo delete · E enable/disable · X split at playhead · [ ] trim start/end to
+flagged track · Delete remove selected · Ctrl+Z undo delete or box edit · E enable/disable · X split at playhead · [ ] trim start/end to
 playhead · = extend to playhead · T track selected box · J join the next box to the selected track · P find the same person ·
 Ctrl+R redact audio range at playhead · Ctrl+F find word ·
 Ctrl+E export · Ctrl+B batch · Ctrl+wheel zoom timeline · double-click video to fit.

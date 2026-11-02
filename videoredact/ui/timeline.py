@@ -17,6 +17,7 @@ LABEL_W = 110
 LABEL_COLORS = {
     "face": QColor(255, 140, 0), "screen": QColor(0, 170, 255), "document": QColor(170, 90, 255),
     "phone": QColor(0, 200, 140), "person": QColor(255, 80, 160), "license_plate": QColor(255, 220, 0),
+    "entire picture": QColor(225, 225, 225),
 }
 
 

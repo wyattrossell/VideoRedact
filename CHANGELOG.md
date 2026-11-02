@@ -7,6 +7,12 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Added
+- **Redact the entire picture** (Video menu, Ctrl+Shift+R): one redaction that covers the whole
+  picture, edge to edge, over a time range (default: from the playhead to the end), for footage
+  recorded where everything in view must be withheld. Black, blue or blur like any box; the
+  audio is untouched. Adjust the range with the usual trim / extend / split keys.
+
 ### Changed
 - **The heavy blur is back** as a video style (black box, blue box or blur; pixelate stays
   withdrawn). Its strength is unchanged; the re-identification figures in

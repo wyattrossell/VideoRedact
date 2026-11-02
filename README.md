@@ -20,6 +20,8 @@ ordinary Windows PC (no GPU required). MIT licensed.
   when opened (audio copied unchanged; the original's hash stays on record).
 - Licence plates (open-image-models YOLOv9-t, MIT) are detected and kept only where
   they sit on a detected vehicle.
+- Redact the entire picture over a time range (Video menu) for footage recorded where
+  everything in view must be withheld.
 - Draw a box around anything and the object is tracked forward and backward
   (ViTTrack, scale-adaptive), and re-acquired when it leaves the frame and
   comes back later.

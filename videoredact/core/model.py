@@ -242,9 +242,12 @@ class Span:
         self.keyframes = {k: self.keyframes[k] for k in keep}
 
 
+FULL_FRAME_LABEL = "entire picture"   # a track that covers the whole picture over a time range (see full_frame_track)
+
+
 @dataclass
 class VideoTrack:
-    label: str = "object"              # face, screen, document, person, manual...
+    label: str = "object"              # face, screen, document, person, manual, "entire picture"...
     spans: list[Span] = field(default_factory=list)
     style: Optional[VideoStyle] = None  # None -> project default
     shape: Shape = Shape.RECT
@@ -261,6 +264,11 @@ class VideoTrack:
             if s.contains(frame):
                 return s.bbox_at(frame)
         return None
+
+    @property
+    def is_full_frame(self) -> bool:
+        """A whole-picture redaction (full_frame_track): fixed box, nothing to track or drag."""
+        return self.label == FULL_FRAME_LABEL
 
     def first_frame(self) -> int:
         return min((s.start_frame for s in self.spans), default=0)
@@ -458,6 +466,18 @@ class VideoTrack:
             note=d.get("note", ""),
             spans=[Span.from_dict(s) for s in d.get("spans", [])],
         )
+
+
+def full_frame_track(start_frame: int, end_frame: int, style: Optional[VideoStyle] = None,
+                     note: str = "") -> VideoTrack:
+    """A redaction of the entire picture from `start_frame` to `end_frame` (inclusive): for
+    footage recorded where everything in view must be withheld (a hospital room, the inside of a
+    home, a victim interview). One keyframe covering the whole frame, rectangle, no margin;
+    the usual trim / split / extend keys adjust the range. Requested by Wyatt on 2026-11-02."""
+    f0, f1 = (int(start_frame), int(end_frame)) if start_frame <= end_frame else (int(end_frame), int(start_frame))
+    return VideoTrack(label=FULL_FRAME_LABEL, spans=[Span(f0, f1, {f0: BBox(0.0, 0.0, 1.0, 1.0)})],
+                      style=style, shape=Shape.RECT, pad=0.0, source="manual",
+                      note=note or f"entire picture redacted, frames {f0}-{f1}")
 
 
 # --------------------------------------------------------------------------

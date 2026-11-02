@@ -21,9 +21,9 @@ from videoredact.audio.transcribe import find_matches, words_in_range
 from videoredact.core.media import (MEDIA_FILTER, FrameReader, decode_audio, nearest_standard_rate, normalize_cfr,
                                     probe, sha256_file)
 from videoredact.core.model import (AudioRedaction, AudioStyle, BBox, Project, Shape, Span, VideoStyle, VideoTrack,
-                                    Word, as_enum)
+                                    Word, as_enum, full_frame_track)
 from videoredact.paths import settings
-from .dialogs import AutoDetectDialog, BatchDialog, ExportDialog, NewBoxDialog, SettingsDialog
+from .dialogs import AutoDetectDialog, BatchDialog, ExportDialog, FullFrameDialog, NewBoxDialog, SettingsDialog
 from .panels import AUDIO_STYLE_NAMES, VIDEO_STYLE_NAMES, PIIDialog, RedactionPanel
 from .player import MediaPlayer
 from .timeline import Timeline
@@ -168,6 +168,9 @@ class MainWindow(QMainWindow):
         self.a_track = act("&Track selected box (forward and backward)", self.track_selected, "T")
         self.a_join = act("&Join the next drawn box to the selected track", self.join_next_box, "J")
         self.a_person = act("Find this &person in every face track…", self.find_same_person, "P")
+        self.a_full = act("Redact the &entire picture over a time range…", self.redact_full_frame, "Ctrl+Shift+R")
+        self.a_full.setToolTip("Covers the whole picture, edge to edge, from the playhead (or any range) to the end: "
+                               "for footage recorded where everything in view must be withheld.")
         self.a_quick = act("Track every new box immediately (Shift+drag asks first)", self.toggle_quick_box, checkable=True)
         self.a_quick.setChecked(bool(settings.get("quick_box", True)))
         self.a_clear_auto = act("Remove all a&utomatic detections", self.clear_auto)
@@ -182,7 +185,8 @@ class MainWindow(QMainWindow):
         self.a_prev = act("Previous redaction", lambda: self.panel.step(-1), "Shift+N")
         self.a_next_flag = act("Next flagged track", lambda: self.panel.next_flagged(1), "F")
         self.a_prev_flag = act("Previous flagged track", lambda: self.panel.next_flagged(-1), "Shift+F")
-        for a in (self.a_detect, self.a_track, self.a_join, self.a_person, self.a_quick, self.a_clear_auto, self.a_delete, self.a_undo):
+        for a in (self.a_detect, self.a_track, self.a_join, self.a_person, self.a_full, self.a_quick, self.a_clear_auto,
+                  self.a_delete, self.a_undo):
             m.addAction(a)
         m.addSeparator()
         for a in (self.a_trim_start, self.a_trim_end, self.a_extend, self.a_split, self.a_toggle,
@@ -267,7 +271,7 @@ class MainWindow(QMainWindow):
             a.setEnabled(aud)
         for a in (self.a_find, self.a_pii):
             a.setEnabled(has and bool(self.project.transcript))
-        for a in (self.a_detect, self.a_track, self.a_clear_auto):
+        for a in (self.a_detect, self.a_track, self.a_clear_auto, self.a_full):
             a.setEnabled(vid)
         self.video.draw_mode = vid
 
@@ -915,7 +919,7 @@ class MainWindow(QMainWindow):
         drawn in a gap of the selected track within JOIN_GAP_S of one of its spans and is of a
         similar size to the box at that edge."""
         t = self._selected_track()
-        if t is None or not t.spans:
+        if t is None or not t.spans or t.is_full_frame:
             return None
         if self.__dict__.get("_join_next"):
             return t
@@ -1033,7 +1037,7 @@ class MainWindow(QMainWindow):
 
     def on_box_edited(self, tid: str, bbox: BBox) -> None:
         t = self.project.get_track(tid) if self.project else None
-        if not t:
+        if not t or t.is_full_frame:
             return
         f = self.current_frame()
         scope = self.edit_scope()
@@ -1114,6 +1118,10 @@ class MainWindow(QMainWindow):
         t = self.project.get_track(tid) if self.project else None
         if not t:
             return
+        if t.is_full_frame:
+            self.statusBar().showMessage("A whole-picture redaction covers everything; there is nothing to track. "
+                                         "Use [ ] = X to change its time range.", 6000)
+            return
         f = self.current_frame()
         bb = t.bbox_at(f)
         if bb is None:
@@ -1126,6 +1134,36 @@ class MainWindow(QMainWindow):
                                 "This replaces the existing track with the tracked result.") != QMessageBox.Yes:
             return
         self._run_tracking(f, bb, t.label, t, replace_id=tid)
+
+    # ------------------------------------------------------ whole picture
+    def redact_full_frame(self) -> None:
+        """Video menu / Ctrl+Shift+R: cover the entire picture over a time range."""
+        if not self.project or not self.project.media.has_video:
+            return
+        self.player.pause()
+        dlg = FullFrameDialog(settings, self.current_time(), self.project.media.duration, self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        t0, t1 = dlg.range()
+        self.add_full_frame(t0, t1, as_enum(VideoStyle, dlg.style.currentData()))
+
+    def add_full_frame(self, t0: float, t1: float, style: Optional[VideoStyle] = None) -> Optional[VideoTrack]:
+        proj = self.project
+        fps = self.fps or 30.0
+        last = max(0, (proj.media.frame_count or int(round(proj.media.duration * fps))) - 1)
+        f0 = max(0, min(last, int(round(t0 * fps))))
+        f1 = max(0, min(last, int(round(t1 * fps)) - 1 if t1 * fps > f0 + 1 else f0))
+        if f1 < f0:
+            f0, f1 = f1, f0
+        t = full_frame_track(f0, f1, style)
+        proj.add_video_track(t)
+        proj.log("full_frame_added", f"frames {f0}-{f1} ({fmt_time(f0 / fps)} - {fmt_time((f1 + 1) / fps)}), "
+                                     f"style {(as_enum(VideoStyle, style) or proj.default_video_style).value}")
+        self._project_changed()
+        self._select("video", t.id)
+        self.statusBar().showMessage(f"The entire picture is redacted from {fmt_time(f0 / fps)} to {fmt_time((f1 + 1) / fps)}. "
+                                     "[ ] trim, = extend, X split, Delete removes it.", 8000)
+        return t
 
     def auto_detect(self) -> None:
         if not self.project or not self.project.media.has_video:
@@ -1462,7 +1500,8 @@ Shift+drag asks for the label, style and tracking options first. If a track is s
 its gaps (within 10 s of where it stopped), the box continues that track instead of starting a new one; press J first
 to force that from anywhere. Select a face track and press P to find the same person in every other face track, then
 disable or delete them all at once, or keep only that person redacted.
-<br>
+Video ▸ <b>Redact the entire picture</b> (Ctrl+Shift+R) covers the whole picture from the playhead (or any range) to the
+end, for footage recorded where everything in view must be withheld; trim the range with the keys below.<br>
 <b>4. Review:</b> Play with <i>Preview redactions</i> on: you see the boxes and hear the beep/silence exactly as exported.
 N / Shift+N step through the redactions, Delete removes one (Ctrl+Z brings it back), E disables it without deleting,
 X splits a track at the playhead, [ ] trim it, = extends it, T re-tracks a selected box from the playhead.
@@ -1473,7 +1512,7 @@ own motion and get the same shift and size change; Ctrl+Z undoes the edit.<br>
 <b>Keys:</b> Space play/pause · ←/→ frame step (Shift: 1 s) · N / Shift+N next/previous redaction · F / Shift+F next/previous
 flagged track · Delete remove selected · Ctrl+Z undo delete or box edit · E enable/disable · X split at playhead · [ ] trim start/end to
 playhead · = extend to playhead · T track selected box · J join the next box to the selected track · P find the same person ·
-Ctrl+R redact audio range at playhead · Ctrl+F find word ·
+Ctrl+R redact audio range at playhead · Ctrl+Shift+R redact the entire picture · Ctrl+F find word ·
 Ctrl+E export · Ctrl+B batch · Ctrl+wheel zoom timeline · double-click video to fit.
 """)
 

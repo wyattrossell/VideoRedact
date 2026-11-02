@@ -459,6 +459,49 @@ class BatchDialog(QDialog):
         return [k for k, cb in self.checks.items() if cb.isChecked()]
 
 
+class FullFrameDialog(QDialog):
+    """Redact the entire picture over a time range (Video menu). Start defaults to the playhead,
+    end to the end of the video; the range can be trimmed afterwards with the usual keys."""
+
+    def __init__(self, settings: Settings, cur_time: float, duration: float, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Redact the entire picture")
+        lay = QVBoxLayout(self)
+        note = QLabel("Covers the whole picture, edge to edge, for the time range below: for footage recorded "
+                      "where everything in view must be withheld (inside a home, a hospital room, an interview). "
+                      "The audio is not changed. Adjust the range afterwards with [ ] (trim), = (extend) and X (split).")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        f = QFormLayout()
+        self.t0 = QDoubleSpinBox()
+        self.t0.setRange(0, max(0.0, duration))
+        self.t0.setDecimals(2)
+        self.t0.setValue(min(cur_time, duration))
+        self.t0.setSuffix(" s")
+        self.t1 = QDoubleSpinBox()
+        self.t1.setRange(0, max(0.0, duration))
+        self.t1.setDecimals(2)
+        self.t1.setValue(duration)
+        self.t1.setSuffix(" s")
+        f.addRow("From", self.t0)
+        f.addRow("To", self.t1)
+        self.style = QComboBox()
+        self.style.addItem("Project default", None)
+        for k, v in VIDEO_STYLE_NAMES.items():
+            self.style.addItem(v, k.value)
+        f.addRow("Style", self.style)
+        lay.addLayout(f)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText("Redact")
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)
+
+    def range(self) -> tuple[float, float]:
+        a, b = self.t0.value(), self.t1.value()
+        return (a, b) if a <= b else (b, a)
+
+
 class NewBoxDialog(QDialog):
     """Asked after the user draws a box: what is it and what should we do?"""
 

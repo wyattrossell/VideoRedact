@@ -70,6 +70,10 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    the default; blue box and heavy blur are the other choices (pixelate was withdrawn in 0.1.19:
    measurably weaker, see docs/CJIS_COMPLIANCE.md section 9). The blur is the same strength as
    before 0.1.19.
+6b. **Entire picture**: Video → Redact the entire picture (Ctrl+Shift+R) at a point where the camera
+   goes somewhere everything must be withheld. The default range runs from the playhead to the
+   end; trim it with [ ] once the camera leaves. Check the export is solid (or blurred) edge to
+   edge for exactly that range and that the audio is untouched.
 7. **Audio redaction by range**: drag on the audio lane of the timeline to beep or silence a
    range without a transcript.
 7b. **Phone footage** (0.1.19): open a citizen's phone recording. If its frame rate is variable

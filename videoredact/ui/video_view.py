@@ -29,6 +29,7 @@ from videoredact.core.video_redact import redact_frame
 LABEL_COLORS = {
     "face": QColor(255, 140, 0), "screen": QColor(0, 170, 255), "document": QColor(170, 90, 255),
     "phone": QColor(0, 200, 140), "person": QColor(255, 80, 160), "license_plate": QColor(255, 220, 0),
+    "entire picture": QColor(225, 225, 225),
 }
 DEFAULT_COLOR = QColor(255, 60, 60)
 HANDLE = 7.0
@@ -44,7 +45,8 @@ class BoxItem(QGraphicsRectItem):
         self._start_pos = QPointF()
         color = LABEL_COLORS.get(track.label, DEFAULT_COLOR)
         self.caption = f"{track.label}"
-        self.setPen(QPen(color, 2, Qt.SolidLine))
+        self.fixed = bool(getattr(track, "is_full_frame", False))   # whole picture: select only, no drag/resize
+        self.setPen(QPen(color, 2, Qt.DashLine if self.fixed else Qt.SolidLine))
         self.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 30)))
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setAcceptHoverEvents(True)
@@ -66,7 +68,7 @@ class BoxItem(QGraphicsRectItem):
         tw = fm.horizontalAdvance(label) + 6
         painter.drawRect(QRectF(r.left(), r.top() - fm.height() - 2, tw, fm.height() + 2))
         painter.drawText(QPointF(r.left() + 3, r.top() - 4), label)
-        if self.isSelected():
+        if self.isSelected() and not self.fixed:
             painter.setBrush(QBrush(Qt.white))
             painter.setPen(QPen(Qt.black, 1))
             s = HANDLE / max(0.2, self.view.transform().m11())
@@ -90,7 +92,7 @@ class BoxItem(QGraphicsRectItem):
             return super().mousePressEvent(event)
         self.setSelected(True)
         self.view.trackSelected.emit(self.track.id)
-        self._drag = self._hit_handle(event.pos()) or "move"
+        self._drag = None if self.fixed else (self._hit_handle(event.pos()) or "move")
         self._start_rect = QRectF(self.rect())
         self._start_pos = event.scenePos()
         event.accept()

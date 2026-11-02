@@ -7,6 +7,12 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Removed
+- **The protected zone** of 0.1.19 (a region over the camera's timestamp that no redaction could
+  cover). A face passing behind it stayed visible, which defeats the purpose; nothing in the
+  picture is exempt any more. A project saved by 0.1.19 opens without its zone and notes that
+  in its audit log.
+
 ## [0.1.19] - 2026-11-02
 
 ### Added

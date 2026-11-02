@@ -39,9 +39,6 @@ def write_csv(project: Project, path: str | Path, result: dict | None = None) ->
                 w.writerow(["video", t.id, t.label, fmt_time(st), fmt_time(en), f"{en - st:.3f}",
                             s.start_frame, s.end_frame, as_enum(VideoStyle, t.style or project.default_video_style).value,
                             as_enum(Shape, t.shape).value, "", t.note, t.source, t.enabled, t.created_by, t.created_at])
-        for z in project.protected_zones:
-            w.writerow(["protected_zone", z.id, z.label, "", "", "", "", "", "never redacted", "rect", "", z.note,
-                        "manual", z.enabled, "", z.created_at])
         w.writerow([])
         w.writerow(["source_file", project.media.path])
         w.writerow(["source_sha256", project.media.sha256])
@@ -151,11 +148,6 @@ def write_pdf(project: Project, path: str | Path, result: dict | None = None) ->
                             ("VALIGN", (0, 0), (-1, -1), "TOP"),
                             ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey)]))
     story += [vt, Spacer(1, 12)]
-    if project.protected_zones:
-        zl = "; ".join(f"{z.label} at x={z.bbox.x:.3f} y={z.bbox.y:.3f} w={z.bbox.w:.3f} h={z.bbox.h:.3f} "
-                       f"({'on' if z.enabled else 'off'})" for z in project.protected_zones)
-        story.append(Paragraph(f"Protected zones, never redacted whatever covers them ({len(project.protected_zones)}): {zl}", small))
-        story.append(Spacer(1, 12))
 
     # ---- models ----------------------------------------------------------
     try:

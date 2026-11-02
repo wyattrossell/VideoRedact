@@ -19,8 +19,7 @@ ordinary Windows PC (no GPU required). MIT licensed.
 - Phone footage with a variable frame rate is offered a constant-rate working copy
   when opened (audio copied unchanged; the original's hash stays on record).
 - Licence plates (open-image-models YOLOv9-t, MIT) are detected and kept only where
-  they sit on a detected vehicle; a protected zone over the camera's timestamp
-  overlay is never redacted, whatever covers it (Video menu to move or disable).
+  they sit on a detected vehicle.
 - Draw a box around anything and the object is tracked forward and backward
   (ViTTrack, scale-adaptive), and re-acquired when it leaves the frame and
   comes back later.

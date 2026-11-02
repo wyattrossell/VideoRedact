@@ -339,10 +339,8 @@ class ExportDialog(QDialog):
         lay.addWidget(self.verify)
         n_a = sum(1 for r in project.audio_redactions if r.enabled)
         n_v = sum(1 for t in project.video_tracks if t.enabled)
-        n_z = len(project.active_zones())
-        lay.addWidget(QLabel(f"{n_a} audio redaction(s) and {n_v} video region(s) will be applied"
-                             + (f"; {n_z} protected zone(s) stay visible (never redacted)" if n_z else "")
-                             + ". The original file is not modified."))
+        lay.addWidget(QLabel(f"{n_a} audio redaction(s) and {n_v} video region(s) will be applied. "
+                             "The original file is not modified."))
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.button(QDialogButtonBox.Ok).setText("Export")
         bb.accepted.connect(self.accept)

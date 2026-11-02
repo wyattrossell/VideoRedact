@@ -145,10 +145,7 @@ def _redactions(project: Project) -> dict[str, Any]:
         video.append({"id": t.id, "label": t.label, "style": (as_enum(VideoStyle, t.style) or as_enum(VideoStyle, project.default_video_style)).value,
                       "shape": as_enum(Shape, t.shape).value, "pad": t.pad, "source": t.source, "enabled": t.enabled,
                       "note": t.note, "created_by": t.created_by, "created_at": t.created_at, "spans": spans})
-    zones = [{"id": z.id, "label": z.label, "box": z.bbox.to_list(), "enabled": z.enabled, "note": z.note,
-              "created_at": z.created_at} for z in project.protected_zones]
-    # protected zones are never redacted, whatever covers them (the camera's timestamp overlay)
-    return {"audio": audio, "video": video, "protected_zones": zones}
+    return {"audio": audio, "video": video}
 
 
 def build_manifest(project: Project, result: dict[str, Any], export_opts: Any) -> dict[str, Any]:

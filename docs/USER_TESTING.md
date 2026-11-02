@@ -51,9 +51,6 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    apply to" decides how far the fix reaches: this frame only, from here to the end of the track
    (default), from the start to here, or the whole track. The other keyframes keep their own motion
    and get the same shift and size change. Tell us whether the default saves you time or surprises you.
-   **Protected zone** (0.1.19): the green dashed box at the top right is never redacted, so the
-   camera's timestamp stays readable. Check it sits over your camera's overlay; drag it if not,
-   and tell us if your footage puts the overlay somewhere else.
    **Same person everywhere** (0.1.18): select a face track and press P. The program finds every
    other face track of that person and offers to disable or delete them all, or to keep only
    that person redacted. Tell us when it pairs two different people, or misses an obvious match.

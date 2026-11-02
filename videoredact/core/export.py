@@ -56,15 +56,14 @@ MIN_FRAMES_PER_WORKER = 300
 
 
 def _encode_segment(src: str, out_seg: str, f_start: int, f_end: int, fps: float, W: int, H: int,
-                    tracks_d: list, style: str, crf: int, preset: str, q, wid: int, zones_d: Optional[list] = None) -> None:
+                    tracks_d: list, style: str, crf: int, preset: str, q, wid: int) -> None:
     """Worker process: redact + encode frames [f_start, f_end) to a video-only segment."""
     try:
         import cv2
         cv2.setNumThreads(2)
-        from .model import BBox, VideoStyle, VideoTrack
+        from .model import VideoStyle, VideoTrack
         from .streams import FFmpegWriter, FrameProducer
         tracks = [VideoTrack.from_dict(d) for d in tracks_d]
-        zones = [BBox(*z) for z in (zones_d or [])]
         vstyle = VideoStyle(style)
         cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y",
                "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{W}x{H}", "-r", f"{fps:.6f}", "-i", "pipe:0",
@@ -76,7 +75,7 @@ def _encode_segment(src: str, out_seg: str, f_start: int, f_end: int, fps: float
         with FrameProducer(src, f_start, f_end) as producer:
             for idx, frame in producer:
                 if tracks:
-                    video_redact.redact_frame(frame, tracks, idx, vstyle, protected=zones)
+                    video_redact.redact_frame(frame, tracks, idx, vstyle)
                 writer.put(frame)
                 k += 1
                 if k % 30 == 0:
@@ -93,7 +92,6 @@ def _export_video_parallel(src: str, out_path: Path, f_start: int, f_last: int, 
                            workers: int, prog, cancel, tmpdir: Path) -> None:
     import multiprocessing as mp
     tracks_d = [t.to_dict() for t in project.video_tracks if t.enabled]
-    zones_d = [z.to_list() for z in project.active_zones()]
     n = f_last - f_start
     size = n // workers
     bounds = [(f_start + w * size, f_last if w == workers - 1 else f_start + (w + 1) * size) for w in range(workers)]
@@ -103,7 +101,7 @@ def _export_video_parallel(src: str, out_path: Path, f_start: int, f_last: int, 
     procs = []
     for w, (a, b) in enumerate(bounds):
         p = ctx.Process(target=_encode_segment, args=(src, segs[w], a, b, fps, W, H, tracks_d,
-                                                       project.default_video_style.value, opts.crf, opts.preset, q, w, zones_d), daemon=True)
+                                                       project.default_video_style.value, opts.crf, opts.preset, q, w), daemon=True)
         p.start()
         procs.append(p)
     done = 0
@@ -277,13 +275,12 @@ def _export_media(project: Project, opts: ExportOptions, info, src: str, out_pat
                 # thread streams to FFmpeg. Decode/encode overlap instead of running serially.
                 writer = FFmpegWriter(cmd)
                 tracks = [t for t in project.video_tracks if t.enabled]
-                zones = project.active_zones()
                 last_prog = 0.0
                 producer = FrameProducer(src, f_start, f_last, proxy_width=None)
                 try:
                     for idx, frame in producer:
                         if tracks:
-                            video_redact.redact_frame(frame, tracks, idx, project.default_video_style, protected=zones)
+                            video_redact.redact_frame(frame, tracks, idx, project.default_video_style)
                         writer.put(frame)
                         if idx % 15 == 0:
                             p = 0.06 + 0.90 * min(1.0, (idx - f_start) / total)

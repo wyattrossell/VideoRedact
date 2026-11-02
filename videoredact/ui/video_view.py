@@ -31,7 +31,6 @@ LABEL_COLORS = {
     "phone": QColor(0, 200, 140), "person": QColor(255, 80, 160), "license_plate": QColor(255, 220, 0),
 }
 DEFAULT_COLOR = QColor(255, 60, 60)
-ZONE_COLOR = QColor(70, 220, 120)      # protected zone: never redacted
 HANDLE = 7.0
 
 
@@ -124,39 +123,10 @@ class BoxItem(QGraphicsRectItem):
         event.accept()
 
 
-class ZoneItem(BoxItem):
-    """A protected zone (never redacted): drawn dashed green, movable and resizable like a
-    box, but it is not a track: dragging it emits zoneEdited and selects no redaction."""
-
-    def __init__(self, zone, rect: QRectF, view: "VideoView"):
-        super().__init__(zone, rect, view)
-        self.caption = f"never redacted: {zone.label}"
-        self.setPen(QPen(ZONE_COLOR, 2, Qt.DashLine))
-        self.setBrush(QBrush(QColor(ZONE_COLOR.red(), ZONE_COLOR.green(), ZONE_COLOR.blue(), 18)))
-        self.setZValue(9)
-
-    def mousePressEvent(self, event):
-        if event.button() != Qt.LeftButton:
-            return QGraphicsRectItem.mousePressEvent(self, event)
-        self.setSelected(True)
-        self._drag = self._hit_handle(event.pos()) or "move"
-        self._start_rect = QRectF(self.rect())
-        self._start_pos = event.scenePos()
-        event.accept()
-
-    def mouseReleaseEvent(self, event):
-        if self._drag:
-            self._drag = None
-            if self.rect() != self._start_rect:
-                self.view.zoneEdited.emit(self.track.id, self.view.rect_to_bbox(self.rect()))
-        event.accept()
-
-
 class VideoView(QGraphicsView):
     boxDrawn = Signal(object)            # BBox
     trackSelected = Signal(str)          # track id
     boxEdited = Signal(str, object)      # track id, BBox
-    zoneEdited = Signal(str, object)     # protected zone id, BBox
     deleteRequested = Signal()
     frameShown = Signal(int)             # frame index actually displayed
     backgroundClicked = Signal()
@@ -178,7 +148,6 @@ class VideoView(QGraphicsView):
         self.fps = 30.0
         self.current_frame = 0
         self.tracks: list[VideoTrack] = []
-        self.zones: list = []                 # ProtectedZone objects
         self.default_style = VideoStyle.BLACK
         self.preview_redactions = True
         self.draw_mode = True
@@ -210,8 +179,7 @@ class VideoView(QGraphicsView):
             return
         bgr = self._last_bgr
         if self.preview_redactions and self.tracks:
-            bgr = redact_frame(bgr, self.tracks, self.current_frame, self.default_style, in_place=False,
-                               protected=[z.bbox for z in self.zones if z.enabled])
+            bgr = redact_frame(bgr, self.tracks, self.current_frame, self.default_style, in_place=False)
         h, w = bgr.shape[:2]
         qimg = QImage(bgr.data, w, h, w * 3, QImage.Format_BGR888)
         self.pix_item.setPixmap(QPixmap.fromImage(qimg))
@@ -221,9 +189,8 @@ class VideoView(QGraphicsView):
         self.refresh_boxes()
 
     # ---- overlay ---------------------------------------------------------
-    def set_tracks(self, tracks: list[VideoTrack], default_style: VideoStyle, zones: Optional[list] = None) -> None:
+    def set_tracks(self, tracks: list[VideoTrack], default_style: VideoStyle) -> None:
         self.tracks = tracks
-        self.zones = list(zones or [])
         self.default_style = default_style
         self._render()
 
@@ -239,11 +206,6 @@ class VideoView(QGraphicsView):
         self._boxes = []
         if not self.width_px:
             return
-        for z in self.zones:
-            if z.enabled:
-                zi = ZoneItem(z, self.bbox_to_rect(z.bbox), self)
-                self._scene.addItem(zi)
-                self._boxes.append(zi)
         for t in self.tracks:
             bb = t.bbox_at(self.current_frame)
             if bb is None:

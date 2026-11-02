@@ -115,7 +115,7 @@ def _patch_timing(timer: StageTimer):
 
     def redact(frame, tracks, idx, style, in_place=True, **kw):
         t0 = time.perf_counter()
-        r = orig_redact(frame, tracks, idx, style, in_place, **kw)   # kw: protected zones (0.1.19)
+        r = orig_redact(frame, tracks, idx, style, in_place, **kw)
         timer.add("redact", time.perf_counter() - t0)
         return r
 

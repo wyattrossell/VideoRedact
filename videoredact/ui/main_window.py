@@ -21,7 +21,7 @@ from videoredact.audio.transcribe import find_matches, words_in_range
 from videoredact.core.media import (MEDIA_FILTER, FrameReader, decode_audio, nearest_standard_rate, normalize_cfr,
                                     probe, sha256_file)
 from videoredact.core.model import (AudioRedaction, AudioStyle, BBox, Project, Shape, Span, VideoStyle, VideoTrack,
-                                    Word, as_enum, default_overlay_zone)
+                                    Word, as_enum)
 from videoredact.paths import settings
 from .dialogs import AutoDetectDialog, BatchDialog, ExportDialog, NewBoxDialog, SettingsDialog
 from .panels import AUDIO_STYLE_NAMES, VIDEO_STYLE_NAMES, PIIDialog, RedactionPanel
@@ -171,10 +171,6 @@ class MainWindow(QMainWindow):
         self.a_quick = act("Track every new box immediately (Shift+drag asks first)", self.toggle_quick_box, checkable=True)
         self.a_quick.setChecked(bool(settings.get("quick_box", True)))
         self.a_clear_auto = act("Remove all a&utomatic detections", self.clear_auto)
-        self.a_protect = act("Never redact the camera &timestamp (protected zone)", self.toggle_protect, checkable=True)
-        self.a_protect.setToolTip("Keeps a zone over the camera's timestamp overlay that no redaction may cover. "
-                                  "Drag the green dashed box on the video to fit your camera.")
-        self.a_protect_reset = act("Reset the protected zone to the camera overlay position", self.reset_protect)
         self.a_delete = act("&Delete selected redaction", self.delete_selected, "Delete")
         self.a_undo = act("&Undo delete", self.undo_delete, "Ctrl+Z")
         self.a_trim_start = act("Trim track start to playhead", lambda: self.trim_selected("start"), "[")
@@ -188,9 +184,6 @@ class MainWindow(QMainWindow):
         self.a_prev_flag = act("Previous flagged track", lambda: self.panel.next_flagged(-1), "Shift+F")
         for a in (self.a_detect, self.a_track, self.a_join, self.a_person, self.a_quick, self.a_clear_auto, self.a_delete, self.a_undo):
             m.addAction(a)
-        m.addSeparator()
-        m.addAction(self.a_protect)
-        m.addAction(self.a_protect_reset)
         m.addSeparator()
         for a in (self.a_trim_start, self.a_trim_end, self.a_extend, self.a_split, self.a_toggle,
                   self.a_next, self.a_prev, self.a_next_flag, self.a_prev_flag):
@@ -247,7 +240,6 @@ class MainWindow(QMainWindow):
         self.video.boxDrawn.connect(self.on_box_drawn)
         self.video.trackSelected.connect(lambda tid: self._select("video", tid, from_video=True))
         self.video.boxEdited.connect(self.on_box_edited)
-        self.video.zoneEdited.connect(self.on_zone_edited)
         self.video.deleteRequested.connect(self.delete_selected)
         self.video.frameShown.connect(self._on_frame_shown)
         self.transcript.seekRequested.connect(self.seek)
@@ -275,9 +267,8 @@ class MainWindow(QMainWindow):
             a.setEnabled(aud)
         for a in (self.a_find, self.a_pii):
             a.setEnabled(has and bool(self.project.transcript))
-        for a in (self.a_detect, self.a_track, self.a_clear_auto, self.a_protect, self.a_protect_reset):
+        for a in (self.a_detect, self.a_track, self.a_clear_auto):
             a.setEnabled(vid)
-        self.a_protect.setChecked(bool(vid and self.project.active_zones()))
         self.video.draw_mode = vid
 
     # ---------------------------------------------------------- project IO
@@ -323,8 +314,6 @@ class MainWindow(QMainWindow):
                                          f"{'copied unchanged' if norm['audio_copied'] else 're-encoded (container refused a copy)'}")
         elif info.has_video and info.vfr:
             proj.log("WARNING_variable_frame_rate", f"opened as is (average {info.avg_fps:.2f} fps); picture and audio may drift in the export")
-        if info.has_video and bool(settings.get("protect_overlay", True)):
-            proj.add_protected_zone(default_overlay_zone())
         self._set_project(proj)
         # Hash the source in the background (needed for the report)
         self.jobs.run("Hashing source file",
@@ -430,7 +419,7 @@ class MainWindow(QMainWindow):
         self.transcript.set_project(proj)
         self.panel.set_project(proj)
         self.timeline.set_project(proj)
-        self.video.set_tracks(proj.video_tracks, proj.default_video_style, proj.protected_zones)
+        self.video.set_tracks(proj.video_tracks, proj.default_video_style)
         self.setWindowTitle(f"VideoRedact {__version__} — {Path(m.path).name}")
         self._update_enabled()
         self.statusBar().showMessage(
@@ -508,8 +497,7 @@ class MainWindow(QMainWindow):
         self.panel.rebuild(self.panel.current()[1] or None)
         self.timeline.refresh()
         self.transcript.refresh_marks()
-        self.video.set_tracks(self.project.video_tracks, self.project.default_video_style, self.project.protected_zones)
-        self.a_protect.setChecked(bool(self.project.active_zones()))
+        self.video.set_tracks(self.project.video_tracks, self.project.default_video_style)
 
     def _default_styles_changed(self) -> None:
         if not self.project:
@@ -1005,7 +993,7 @@ class MainWindow(QMainWindow):
             live.spans = spans
             live.merge_spans()
             self.timeline.refresh()
-            self.video.set_tracks(proj.video_tracks, proj.default_video_style, proj.protected_zones)
+            self.video.set_tracks(proj.video_tracks, proj.default_video_style)
 
         def done(track: VideoTrack):
             if track is None or self.project is not proj or proj.get_track(live.id) is not live:
@@ -1058,44 +1046,6 @@ class MainWindow(QMainWindow):
         if scope != "frame":
             self.statusBar().showMessage(f"Box corrected on this frame and {n} other keyframe(s) ({EDIT_SCOPE_NAMES[scope]}). "
                                          "Ctrl+Z undoes; the toolbar's 'Box edits apply to' changes the scope.", 6000)
-
-    # ------------------------------------------------------ protected zones
-    def on_zone_edited(self, zid: str, bbox: BBox) -> None:
-        z = self.project.get_zone(zid) if self.project else None
-        if not z:
-            return
-        z.bbox = bbox.clamp()
-        self.project.log("protected_zone_edited", f"{z.label} {z.bbox.to_list()}")
-        self._project_changed()
-
-    def toggle_protect(self, on: bool) -> None:
-        """Video menu: keep (or stop keeping) a zone over the camera's timestamp that is never redacted."""
-        if not self.project:
-            return
-        p = self.project
-        if on:
-            if not p.protected_zones:
-                p.add_protected_zone(default_overlay_zone())
-            for z in p.protected_zones:
-                z.enabled = True
-            p.log("protected_zones_enabled", str(len(p.protected_zones)))
-            self.statusBar().showMessage("Nothing will be redacted inside the green dashed zone (the camera's timestamp). "
-                                         "Drag it on the video to fit your camera.", 8000)
-        else:
-            for z in p.protected_zones:
-                z.enabled = False
-            p.log("protected_zones_disabled", str(len(p.protected_zones)))
-        settings["protect_overlay"] = bool(on)
-        settings.save()
-        self._project_changed()
-
-    def reset_protect(self) -> None:
-        if not self.project:
-            return
-        self.project.protected_zones = []
-        self.project.add_protected_zone(default_overlay_zone())
-        self.project.log("protected_zone_reset", "camera overlay position")
-        self._project_changed()
 
     def _selected_track(self) -> Optional[VideoTrack]:
         kind, rid = self.panel.current()
@@ -1213,7 +1163,6 @@ class MainWindow(QMainWindow):
         opts.assoc = settings.get("assoc", "botsort")
         opts.lead_in = int(settings.get("lead_frames", 15))
         opts.lead_out = int(settings.get("lead_frames", 15))
-        opts.ignore_zones = [b.to_list() for b in self.project.active_zones()]
         settings["detect_tiles"] = opts.tiles
         settings["detect_head"] = opts.head_fallback
         settings.save()
@@ -1384,7 +1333,6 @@ class MainWindow(QMainWindow):
                                                assoc=settings.get("assoc", "botsort"),
                                                lead_in=int(settings.get("lead_frames", 15)),
                                                lead_out=int(settings.get("lead_frames", 15))),
-                            protect_overlay=bool(settings.get("protect_overlay", True)),
                             normalize_vfr=bool(settings.get("vfr_normalize", True)))
 
         def job(prog, cancel, partial):
@@ -1514,8 +1462,7 @@ Shift+drag asks for the label, style and tracking options first. If a track is s
 its gaps (within 10 s of where it stopped), the box continues that track instead of starting a new one; press J first
 to force that from anywhere. Select a face track and press P to find the same person in every other face track, then
 disable or delete them all at once, or keep only that person redacted.
-The green dashed box at the top right is the <b>protected zone</b>: nothing is ever redacted inside it, so the camera's
-timestamp stays readable. Drag it to fit your camera; the Video menu turns it off or resets it.<br>
+<br>
 <b>4. Review:</b> Play with <i>Preview redactions</i> on: you see the boxes and hear the beep/silence exactly as exported.
 N / Shift+N step through the redactions, Delete removes one (Ctrl+Z brings it back), E disables it without deleting,
 X splits a track at the playhead, [ ] trim it, = extends it, T re-tracks a selected box from the playhead.

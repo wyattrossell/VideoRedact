@@ -9,8 +9,6 @@ never under 16 px), blur averages the region down to ~6 samples across.
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
-
 import cv2
 import numpy as np
 
@@ -80,37 +78,17 @@ def apply_box(frame: np.ndarray, bbox: BBox, style: VideoStyle, shape: Shape = S
         frame[y0:y1, x0:x1] = styled
 
 
-def _save_zones(frame: np.ndarray, zones: Sequence[BBox]) -> list[tuple[int, int, int, int, np.ndarray]]:
-    H, W = frame.shape[:2]
-    saved = []
-    for z in zones:
-        x0, y0, x1, y1 = z.to_pixels(W, H)
-        if x1 > x0 and y1 > y0:
-            saved.append((y0, y1, x0, x1, frame[y0:y1, x0:x1].copy()))
-    return saved
-
-
-def _restore_zones(frame: np.ndarray, saved) -> None:
-    for y0, y1, x0, x1, px in saved:
-        frame[y0:y1, x0:x1] = px
-
-
 def redact_frame(frame: np.ndarray, tracks: list[VideoTrack], frame_idx: int,
-                 default_style: VideoStyle, in_place: bool = True,
-                 protected: Optional[Sequence[BBox]] = None) -> np.ndarray:
-    """Apply every enabled track that has a box at frame_idx. `protected` zones (the camera's
-    timestamp overlay, core/model.py ProtectedZone) get their original pixels back afterwards,
-    so no box ever covers them."""
+                 default_style: VideoStyle, in_place: bool = True) -> np.ndarray:
+    """Apply every enabled track that has a box at frame_idx. Nothing in the picture is exempt:
+    the protected zone of 0.1.19 was withdrawn because a face behind it stayed visible."""
     out = frame if in_place else frame.copy()
-    saved = _save_zones(out, protected) if protected else None
     for t in tracks:
         if not t.enabled:
             continue
         bb = t.bbox_at(frame_idx)
         if bb is not None:
             apply_box(out, bb, t.style or default_style, t.shape, t.pad)
-    if saved:
-        _restore_zones(out, saved)
     return out
 
 

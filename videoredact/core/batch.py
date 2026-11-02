@@ -18,7 +18,7 @@ from typing import Callable, Optional
 
 from .export import ExportOptions, export_project
 from .media import FrameReader, probe, sha256_file
-from .model import AudioStyle, Project, VideoStyle
+from .model import AudioStyle, Project, VideoStyle, default_overlay_zone
 
 ProgressCB = Callable[[float, str], None]
 CancelCB = Callable[[], bool]
@@ -38,6 +38,7 @@ class BatchOptions:
     crf: int = 23
     preset: str = "veryfast"
     detect_kwargs: dict = field(default_factory=dict)   # extra AutoDetectOptions fields
+    protect_overlay: bool = True             # add the default protected zone (camera timestamp) to every project
 
 
 @dataclass
@@ -88,8 +89,11 @@ def run_batch(opts: BatchOptions, progress: Optional[ProgressCB] = None, cancel:
             proj.log("batch_started", f)
             prog(0.0, "hashing source")
             info.sha256 = sha256_file(f)
+            if info.has_video and opts.protect_overlay:
+                proj.add_protected_zone(default_overlay_zone())
             if info.has_video:
                 dopts = AutoDetectOptions(labels=list(opts.detect_labels), stride=opts.stride, **opts.detect_kwargs)
+                dopts.ignore_zones = [b.to_list() for b in proj.active_zones()]
                 with FrameReader(f) as r:
                     tracks = run_auto_detect(r, dopts, progress=lambda p, m: prog(0.05 + 0.6 * p, m),
                                              cancel=cancel)

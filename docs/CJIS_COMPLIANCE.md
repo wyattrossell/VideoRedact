@@ -97,7 +97,9 @@ quality, clip range, verification labels…), `engine` (inference tier and libra
 `models`, `transcription_model`, `settings` (every detection threshold and option in force),
 `redactions.audio[]` (id, start/end seconds, words covered, style, how it was created),
 `redactions.video[]` (id, label, style, shape, padding, every span's frame range and every
-keyframe box in normalised coordinates), `verification` (post-export re-detection result:
+keyframe box in normalised coordinates), `redactions.protected_zones[]` (regions that are never
+redacted whatever covers them, by default the camera's timestamp overlay; id, box, enabled),
+`verification` (post-export re-detection result:
 frames checked, detections, any uncovered boxes), `audit_log[]` (every manual edit, with
 timestamp and Windows user, from the moment the file was opened).
 
@@ -163,6 +165,12 @@ timestamp and Windows user, from the moment the file was opened).
   (including a `VideoRedact/<version>` user agent) to GitHub. Nothing about the case is sent.
 * Transcription (speech-to-text) runs locally; its accuracy on body-camera audio is limited
   and the transcript should not be treated as a verbatim record.
+* A **protected zone** (0.1.19; by default over the Axon timestamp overlay, top right) is never
+  redacted, whatever track covers it, so the timestamp stays readable in a release. A real face
+  that passes behind the zone is therefore left visible by design; the export verification
+  re-detects faces in the output and lists it, and the zone is recorded in the manifest, the
+  report and the project's audit log. Turn the zone off (Video menu) when the footage has no
+  overlay there, or drag it to fit another camera.
 
 ## 9. Measured redaction strength, and how to quote it
 

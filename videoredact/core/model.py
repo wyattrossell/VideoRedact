@@ -461,6 +461,44 @@ class VideoTrack:
 
 
 # --------------------------------------------------------------------------
+# Protected zones (never redacted)
+# --------------------------------------------------------------------------
+@dataclass
+class ProtectedZone:
+    """A region of the picture that is never redacted, whatever tracks cover it: the body
+    camera's own timestamp and unit overlay, which must stay readable in a release (Wyatt,
+    2026-11-02). Rendering restores the zone's original pixels after every box is drawn
+    (core/video_redact.py); auto-detect ignores detections that lie mostly inside a zone
+    (so the overlay can never become a fake face or plate track). A real face behind the
+    zone is left visible by design and the export verification reports it."""
+    bbox: BBox
+    label: str = "camera overlay"
+    enabled: bool = True
+    id: str = field(default_factory=new_id)
+    created_at: str = field(default_factory=_now)
+    note: str = ""
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "label": self.label, "enabled": self.enabled, "created_at": self.created_at,
+                "note": self.note, "bbox": self.bbox.to_list()}
+
+    @staticmethod
+    def from_dict(d: dict) -> "ProtectedZone":
+        return ProtectedZone(BBox(*d["bbox"]).clamp(), d.get("label", "camera overlay"), bool(d.get("enabled", True)),
+                             d.get("id") or new_id(), d.get("created_at", _now()), d.get("note", ""))
+
+
+# Where Axon Body 2/3 cameras draw the timestamp, unit id and logo (measured on 1280x720 clips:
+# text from x 805 to 1140 px, logo to 1245 px, y 15 to 85 px). Normalised, so it fits any size.
+AXON_OVERLAY_ZONE = BBox(0.615, 0.012, 0.37, 0.115)
+
+
+def default_overlay_zone() -> ProtectedZone:
+    return ProtectedZone(AXON_OVERLAY_ZONE, "camera overlay",
+                         note="sized for the Axon Body 2/3 timestamp overlay (top right); drag it to fit another camera")
+
+
+# --------------------------------------------------------------------------
 # Media info + project
 # --------------------------------------------------------------------------
 @dataclass
@@ -505,6 +543,7 @@ class Project:
     transcript_model: str = ""
     audio_redactions: list[AudioRedaction] = field(default_factory=list)
     video_tracks: list[VideoTrack] = field(default_factory=list)
+    protected_zones: list[ProtectedZone] = field(default_factory=list)
     default_audio_style: AudioStyle = AudioStyle.BEEP
     default_video_style: VideoStyle = VideoStyle.BLACK
     beep_frequency: float = 1000.0
@@ -563,6 +602,19 @@ class Project:
     def get_track(self, tid: str) -> Optional[VideoTrack]:
         return next((t for t in self.video_tracks if t.id == tid), None)
 
+    # ---- protected zones -----------------------------------------------
+    def active_zones(self) -> list[BBox]:
+        """Boxes that are never redacted (enabled zones only)."""
+        return [z.bbox for z in self.protected_zones if z.enabled]
+
+    def add_protected_zone(self, z: ProtectedZone) -> ProtectedZone:
+        self.protected_zones.append(z)
+        self.log("protected_zone_added", f"{z.label} {z.bbox.to_list()}")
+        return z
+
+    def get_zone(self, zid: str) -> Optional[ProtectedZone]:
+        return next((z for z in self.protected_zones if z.id == zid), None)
+
     # ---- serialization -------------------------------------------------
     def to_dict(self) -> dict:
         return {
@@ -573,6 +625,7 @@ class Project:
             "transcript_model": self.transcript_model,
             "audio_redactions": [r.to_dict() for r in self.audio_redactions],
             "video_tracks": [t.to_dict() for t in self.video_tracks],
+            "protected_zones": [z.to_dict() for z in self.protected_zones],
             "default_audio_style": as_enum(AudioStyle, self.default_audio_style).value,
             "default_video_style": as_enum(VideoStyle, self.default_video_style).value,
             "beep_frequency": self.beep_frequency,
@@ -594,6 +647,7 @@ class Project:
             transcript_model=d.get("transcript_model", ""),
             audio_redactions=[AudioRedaction.from_dict(r) for r in d.get("audio_redactions", [])],
             video_tracks=[VideoTrack.from_dict(t) for t in d.get("video_tracks", [])],
+            protected_zones=[ProtectedZone.from_dict(z) for z in d.get("protected_zones", [])],
             default_audio_style=AudioStyle(d.get("default_audio_style", "beep")),
             default_video_style=VideoStyle(d.get("default_video_style", "black")),
             beep_frequency=d.get("beep_frequency", 1000.0),

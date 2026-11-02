@@ -16,6 +16,9 @@ ordinary Windows PC (no GPU required). MIT licensed.
   people (YOLOX) every few frames, linked into tracks and *carried* by a
   tracker between detections so turned or blurred faces stay covered. Runs on
   several CPU cores in parallel.
+- Licence plates (open-image-models YOLOv9-t, MIT) are detected and kept only where
+  they sit on a detected vehicle; a protected zone over the camera's timestamp
+  overlay is never redacted, whatever covers it (Video menu to move or disable).
 - Draw a box around anything and the object is tracked forward and backward
   (ViTTrack, scale-adaptive), and re-acquired when it leaves the frame and
   comes back later.

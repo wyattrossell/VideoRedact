@@ -35,7 +35,7 @@ import logging
 from videoredact.core.media import FrameReader
 from videoredact.core.model import BBox, Shape, Span, VideoTrack
 from .detector import CombinedDetector
-from .detectors.base import Detection
+from .detectors.base import Detection, _contains
 
 ProgressCB = Callable[[float, str], None]
 CancelCB = Callable[[], bool]
@@ -98,6 +98,7 @@ class AutoDetectOptions:
     face_shape: str = "ellipse"
     detector_cfg: Optional[dict] = None   # override for detectors.build()
     proxy_width: int = 1280    # decode a proxy this wide for detection when the source is larger (boxes are normalized)
+    ignore_zones: list = field(default_factory=list)  # [x, y, w, h] boxes (protected zones): detections mostly inside one are dropped
     scene_cut: bool = True     # detect every frame right after a hard cut and reset carriers/tracker state
     adaptive: bool = True      # skip detection on frames nearly identical to the last detected one (static camera)
     max_stride: int = 15       # cap for adaptive skipping (frames)
@@ -252,6 +253,15 @@ def _run_detector(det, frame):
     return det.detect_one(frame) if hasattr(det, "detect_one") else det.detect(frame)
 
 
+def drop_in_zones(dets: list, zones: list[BBox], frac: float = 0.5) -> list:
+    """Detections with at least `frac` of their area inside a protected zone are not objects
+    to redact (the camera overlay looks like a face to a mirror-padded detector and like a
+    plate to the plate model)."""
+    if not zones:
+        return dets
+    return [d for d in dets if not any(_contains(z, d.bbox, frac) for z in zones)]
+
+
 def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
                   start: int, end: int, progress: Optional[ProgressCB], cancel: Optional[CancelCB],
                   prog_base: float = 0.0, prog_span: float = 1.0) -> list[VideoTrack]:
@@ -282,6 +292,7 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
     cur_stride = stride
     next_det = start
     n_cuts = n_skipped = 0
+    zones = [BBox(*z) for z in (opts.ignore_zones or [])]
 
     def close(L: _Live):
         hs = [b.h for b in L.span.keyframes.values()]
@@ -342,7 +353,7 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
                 next_det = idx + cur_stride
             # full-resolution (or proxy) frame: the face detector downsizes to <=1280 itself (small
             # faces need the pixels; a 960 px copy lost ~7 % of faces), YOLOX resizes to 416 anyway
-            dets = _run_detector(det, frame)
+            dets = drop_in_zones(_run_detector(det, frame), zones)
             if mot is not None:
                 # BoT-SORT gives identities (Kalman prediction + camera-motion compensation);
                 # the *raw detection box* is what gets redacted (the tracker's smoothed box can lag),

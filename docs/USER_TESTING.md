@@ -46,13 +46,24 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    10 s of where it stopped) and the new piece is added to the same track instead of making a
    second one; press J first to force that from anywhere. Ctrl+Z undoes a join. Tell us about
    any face a single box did not follow, with the time in the clip.
-   Plates, tattoos and notepads still use the previous engine (no detector for them yet).
+   Plates, tattoos and notepads still use the previous engine for a drawn box.
+   **Box edit scope** (0.1.19): when you drag or resize a box to fix it, the toolbar's "Box edits
+   apply to" decides how far the fix reaches: this frame only, from here to the end of the track
+   (default), from the start to here, or the whole track. The other keyframes keep their own motion
+   and get the same shift and size change. Tell us whether the default saves you time or surprises you.
+   **Protected zone** (0.1.19): the green dashed box at the top right is never redacted, so the
+   camera's timestamp stays readable. Check it sits over your camera's overlay; drag it if not,
+   and tell us if your footage puts the overlay somewhere else.
    **Same person everywhere** (0.1.18): select a face track and press P. The program finds every
    other face track of that person and offers to disable or delete them all, or to keep only
    that person redacted. Tell us when it pairs two different people, or misses an obvious match.
-5. **Auto-detect** (Video → Auto-detect faces/screens/documents). The default keeps only
+5. **Auto-detect** (Video → Auto-detect faces/plates/screens/documents). The default keeps only
    confident detections (a face must be seen 3+ times at 70 %+ confidence, no whole-body boxes);
    expect far fewer false hits than before, and tell us about any real face it now misses.
+   **Licence plates** (0.1.19) are found by a plate model but kept only where they sit on a
+   detected vehicle (car, truck, bus, motorcycle). On our clips the leftovers are plate-shaped
+   things on cars: a dealer plate frame, a sheet of paper on a hood. Tell us about plates it
+   misses on traffic stops, and about anything it covers that is not a plate.
    Review the list in the right-hand panel with the keys: N / Shift+N next/previous, Delete
    (Ctrl+Z undoes), E disable, X split at the playhead, [ ] trim, = extend.
    The dialog has an off-by-default option for faces cut off by the edge of the picture (people

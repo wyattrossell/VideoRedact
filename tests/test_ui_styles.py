@@ -174,5 +174,6 @@ def test_box_edit_scope_from_toolbar_and_undo(app):
     assert t.spans[0].keyframes[60].to_list() == [.5, .5, .1, .1]
     w.jobs.cancel_all()
     w.jobs.wait_all(10000)
+    app.processEvents()                                   # lets the jobs panel drop finished jobs
     w.dirty = False                                       # closeEvent would otherwise block on the save prompt
     w.close()

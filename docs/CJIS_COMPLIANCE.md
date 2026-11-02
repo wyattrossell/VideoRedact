@@ -11,7 +11,7 @@ and later.
 |---|---|
 | Original evidence is never altered | The program only reads the source file. Output is always a new file. The source SHA-256 is taken at open and re-computed at export; the two values and whether they match are recorded in the audit manifest, the PDF/CSV report and the project file. |
 | Chain of custody for every export | A JSON audit manifest (`<output>_audit.json`) is written beside every export with operator, timestamps, software version, machine, model hashes, thresholds, every redaction (frame ranges and boxes) and every manual edit. The manifest carries its own SHA-256, which is also printed in the PDF report. |
-| Redaction is irreversible | Every style offered is a solid fill: black (default) or blue. Pixelate and heavy blur were withdrawn from the program in 0.1.19 (2026-11-02) after the re-identification bench (section 9) measured both weaker than a solid box; a project that used them is converted to black when opened, with an audit-log entry. |
+| Redaction is irreversible | Black (default) and blue are solid fills. The heavy blur averages the region down to about six samples across before blurring; section 9 gives its measured strength (4 of 80 faces re-identified at the loose threshold, 0 at the strict one) so the choice is informed. Pixelate was withdrawn in 0.1.19 (2026-11-02); a project that used it is converted to black when opened, with an audit-log entry. |
 | Audio is preserved by default | Audio is copied from the source unless the operator adds audio redactions (beep / silence / low tone / noise over a time range). Audio redactions are listed in the manifest. |
 | Fully offline | No telemetry, no analytics, no cloud calls, no runtime model downloads. All models ship inside the installer. The one network feature, the startup check of GitHub Releases, requests only the public version number, shows a notification with a link, never installs, and can be turned off in Settings. Verified by a built-in test that blocks every socket and runs the full pipeline (section 6). |
 | Revisable | Every export also writes a `.vrproj` project file. Reopening it restores the transcript, every redaction and the audit log so a redaction can be revised without starting over. |
@@ -115,13 +115,16 @@ timestamp and Windows user, from the moment the file was opened).
 * **Black (default):** pixels are replaced by zeros. Nothing to recover.
 * **Blue:** pixels are replaced by one constant colour (RGB 20, 70, 180). Nothing to recover;
   it exists for agencies whose release format marks redactions in a colour other than black.
-* **Pixelate and heavy blur: withdrawn in 0.1.19 (2026-11-02).** Both were irreversible by
-  construction (16 px block floor; 6-sample averaging) but the re-identification attack in
-  section 9 still re-identified a 117 px face under either at the loose threshold, while black
-  re-identified none. The program now offers solid fills only. The code paths remain so the bench
-  can keep measuring them (`bench/reid_attack.py`) and so an old project opens: its blurred or
-  pixelated tracks become black boxes and the project's audit log records the change
-  (`video_style_retired`).
+* **Heavy blur:** the region is averaged down to at most six samples across, blurred and scaled
+  back, so what remains is a handful of colour patches; a light Gaussian blur, which is partly
+  reversible, is not offered. The re-identification attack in section 9 still matched 4 of 80
+  faces at the loose threshold (none at the strict one), against none under a solid fill: the
+  blur is offered for agencies whose release format expects it, with that number on record.
+* **Pixelate: withdrawn in 0.1.19 (2026-11-02).** Irreversible by construction (16 px block
+  floor) but no stronger than the blur in section 9 and visually suggestive of detail that is
+  not there. The code path remains so the bench can keep measuring it (`bench/reid_attack.py`)
+  and so an old project opens: its pixelated tracks become black boxes and the project's audit
+  log records the change (`video_style_retired`).
 * Styles are chosen per project and per item; the project file and manifest record which was
   used for every track.
 * **Verification pass:** after export the program can re-run the face detector on the
@@ -196,9 +199,9 @@ people, so the clip supports the measurement):
 Mean similarity after redaction sits below the different-person level in every style, i.e. a
 redacted face matches its own original no better than a stranger would. The residual matches
 at the loose threshold are all in blur and pixelate; the numbers and the faces behind them are
-in bench/results/REID_ATTACK.md. On these numbers blur and pixelate were withdrawn from the
-program in 0.1.19; the rows stay here because they are the reason. Black is the default; blue
-is the same solid fill in another colour (not re-measured: identical construction).
+in bench/results/REID_ATTACK.md. On these numbers pixelate was withdrawn from the program in
+0.1.19; the blur stays as a choice with its row above as the disclosure. Black is the default;
+blue is the same solid fill in another colour (not re-measured: identical construction).
 
 Quoting these numbers (rules adopted from OpenScrub's benchmark notes):
 

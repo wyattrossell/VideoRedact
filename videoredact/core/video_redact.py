@@ -1,11 +1,11 @@
-"""Apply video redactions (black or blue box; rect, ellipse or rounded) to frames.
+"""Apply video redactions (black box, blue box or heavy blur; rect, ellipse or rounded) to frames.
 
-The program offers solid fills only (decision of 2026-11-02): a solid box leaves nothing to
-recover. Blur and pixelate are kept here for the re-identification bench
-(bench/reid_attack.py) and for the irreversibility tests; a project that used them is
-converted to black when it is opened (core/model.py Project.retire_styles). Their strengths
-scale with the box size: pixelate uses a coarse block grid (default ~8 blocks across the box,
-never under 16 px), blur averages the region down to ~6 samples across.
+Black and blue are solid fills: nothing to recover. The heavy blur averages the region down to
+~6 samples across before blurring (strength unchanged since 0.1.10; measured in
+bench/results/REID_ATTACK.md). Pixelate is kept here for that bench and the irreversibility
+tests only; a project that used it is converted to black when it is opened
+(core/model.py Project.retire_styles). Strengths scale with the box size: pixelate uses a
+coarse block grid (default ~8 blocks across the box, never under 16 px).
 """
 from __future__ import annotations
 

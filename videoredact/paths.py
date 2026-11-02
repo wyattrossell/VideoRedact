@@ -164,10 +164,10 @@ class Settings(dict):
             self["detect_precise"] = True
             self["settings_rev"] = 2
         if rev < 3:
-            # 0.1.19: blur and pixelate are no longer offered (solid boxes only)
-            if self.get("default_video_style") in ("blur", "pixelate"):
+            # 0.1.19: pixelate is no longer offered (blur was withdrawn too, and brought back the same day)
+            if self.get("default_video_style") == "pixelate":
                 self["default_video_style"] = "black"
-            if self.get("last_box_style") in ("blur", "pixelate"):
+            if self.get("last_box_style") == "pixelate":
                 self["last_box_style"] = None
             self["settings_rev"] = 3
         if rev < SETTINGS_REV:

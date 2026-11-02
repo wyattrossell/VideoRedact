@@ -74,7 +74,9 @@ def test_main_window_style_changes(app, tmp_path):
     vcombo = w.panel.tree.itemWidget(vrow, 4)
     vcombo.setCurrentIndex(2)  # Blue box
     assert p.video_tracks[0].style is VideoStyle.BLUE
-    assert [vcombo.itemText(i) for i in range(vcombo.count())] == ["Default (Blue box)", "Black box (recommended)", "Blue box"]
+    assert [vcombo.itemText(i) for i in range(vcombo.count())] == ["Default (Blue box)", "Black box (recommended)", "Blue box", "Blur (heavy)"]
+    vcombo.setCurrentIndex(3)
+    assert p.video_tracks[0].style is VideoStyle.BLUR
     # new-box dialog data comes back as plain values; the window coerces
     dlg = NewBoxDialog(settings, 1.0, 12.0)
     dlg.shape.setCurrentIndex(1)

@@ -149,8 +149,8 @@ def test_settings_migration_turns_head_fallback_off_once(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "settings_path", lambda: p)
     s = paths.Settings()
     assert s["detect_head"] is False and s["detect_precise"] is True and s["settings_rev"] == paths.SETTINGS_REV
-    # rev 3 (0.1.19): the withdrawn styles fall back to the black box
-    assert s["default_video_style"] == "black" and s["last_box_style"] is None
+    # rev 3 (0.1.19): the withdrawn pixelate falls back to the black box; blur is still offered
+    assert s["default_video_style"] == "black" and s["last_box_style"] == "blur"
     # the user's later choice is respected
     s["detect_head"] = True
     s.save()

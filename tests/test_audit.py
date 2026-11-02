@@ -134,8 +134,8 @@ def test_blue_box_is_a_solid_fill():
 
 
 def test_retired_styles_become_black_when_a_project_is_opened(tmp_path):
-    """Blur and pixelate were withdrawn on 2026-11-02; an old project that used them must still
-    open, come out as black boxes, and say so in its audit log."""
+    """Pixelate was withdrawn in 0.1.19; an old project that used it must still open, come out
+    as black boxes, and say so in its audit log. Blur is offered again and stays as it was."""
     import json
     from videoredact.core.model import MediaInfo, Project, Span, VideoTrack
     p = Project(media=MediaInfo(path="x.mp4", fps=30, frame_count=30, has_video=True))
@@ -146,8 +146,9 @@ def test_retired_styles_become_black_when_a_project_is_opened(tmp_path):
     f.write_text(json.dumps(p.to_dict()), encoding="utf-8")
     q = Project.load(f)
     assert q.default_video_style is VideoStyle.BLACK
-    assert [t.style for t in q.video_tracks] == [VideoStyle.BLACK, VideoStyle.BLACK]
+    assert [t.style for t in q.video_tracks] == [VideoStyle.BLUR, VideoStyle.BLACK]
     assert q.audit_log[-1].action == "video_style_retired" and "pixelate" in q.audit_log[-1].details
+    assert "blur" not in q.audit_log[-1].details
     # saving and reopening the converted project adds nothing more
     q.save(f)
     r = Project.load(f)

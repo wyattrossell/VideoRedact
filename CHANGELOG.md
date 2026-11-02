@@ -7,6 +7,11 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+### Changed
+- **The heavy blur is back** as a video style (black box, blue box or blur; pixelate stays
+  withdrawn). Its strength is unchanged; the re-identification figures in
+  docs/CJIS_COMPLIANCE.md section 9 stay on record so the choice is informed.
+
 ### Removed
 - **The protected zone** of 0.1.19 (a region over the camera's timestamp that no redaction could
   cover). A face passing behind it stayed visible, which defeats the purpose; nothing in the

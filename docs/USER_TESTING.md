@@ -67,8 +67,9 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    right next to the camera). On our clips it finds those but also mistakes the camera's own
    timestamp overlay for a face; if you try it, tell us which happened more on your footage.
 6. **Styles**: change the project default (toolbar) and one item's style (panel). Black box is
-   the default; blue box is the only other choice (pixelate and blur were withdrawn in 0.1.19:
-   measurably weaker, see docs/CJIS_COMPLIANCE.md section 9).
+   the default; blue box and heavy blur are the other choices (pixelate was withdrawn in 0.1.19:
+   measurably weaker, see docs/CJIS_COMPLIANCE.md section 9). The blur is the same strength as
+   before 0.1.19.
 7. **Audio redaction by range**: drag on the audio lane of the timeline to beep or silence a
    range without a transcript.
 7b. **Phone footage** (0.1.19): open a citizen's phone recording. If its frame rate is variable

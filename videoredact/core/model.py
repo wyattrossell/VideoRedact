@@ -44,14 +44,14 @@ class AudioStyle(str, Enum):
 class VideoStyle(str, Enum):
     BLACK = "black"
     BLUE = "blue"
-    # Retired from the program on 2026-11-02 (Wyatt: solid boxes only; the re-identification
-    # attack in bench/results/REID_ATTACK.md showed both measurably weaker than a solid fill).
-    # They still parse so an old project opens, and are converted to BLACK when it is loaded.
-    BLUR = "blur"
+    BLUR = "blur"          # heavy blur (core/video_redact.py); withdrawn in 0.1.19, back at Wyatt's request the same day
+    # Retired from the program in 0.1.19 (the re-identification attack in bench/results/REID_ATTACK.md
+    # showed it measurably weaker than a solid fill). It still parses so an old project opens, and
+    # is converted to BLACK when the project is loaded.
     PIXELATE = "pixelate"
 
 
-RETIRED_VIDEO_STYLES = {VideoStyle.BLUR, VideoStyle.PIXELATE}
+RETIRED_VIDEO_STYLES = {VideoStyle.PIXELATE}
 
 
 class Shape(str, Enum):
@@ -620,9 +620,9 @@ class Project:
         return p
 
     def retire_styles(self) -> list[str]:
-        """Blur and pixelate are no longer offered (2026-11-02): a project that used them is
-        switched to a black box, and the change is written to its audit log so the reviewer
-        can see what happened. Returns a description of each change made."""
+        """Pixelate is no longer offered (0.1.19): a project that used it is switched to a black
+        box, and the change is written to its audit log so the reviewer can see what happened.
+        Returns a description of each change made."""
         changed = []
         if as_enum(VideoStyle, self.default_video_style) in RETIRED_VIDEO_STYLES:
             changed.append(f"project default {as_enum(VideoStyle, self.default_video_style).value}")
@@ -633,7 +633,7 @@ class Project:
                 changed.append(f"{t.label} {t.id} {st.value}")
                 t.style = VideoStyle.BLACK
         if changed:
-            self.log("video_style_retired", "blur/pixelate are no longer offered; now black box: " + "; ".join(changed))
+            self.log("video_style_retired", "pixelate is no longer offered; now black box: " + "; ".join(changed))
         return changed
 
     def save(self, path: str | Path) -> None:

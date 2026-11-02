@@ -144,10 +144,13 @@ def test_main_window_delete_undo_split_toggle_and_quick_box(monkeypatch):
 def test_settings_migration_turns_head_fallback_off_once(tmp_path, monkeypatch):
     from videoredact import paths
     p = tmp_path / "settings.json"
-    p.write_text(json.dumps({"settings_rev": 1, "detect_head": True, "language": "en"}), encoding="utf-8")
+    p.write_text(json.dumps({"settings_rev": 1, "detect_head": True, "language": "en",
+                             "default_video_style": "pixelate", "last_box_style": "blur"}), encoding="utf-8")
     monkeypatch.setattr(paths, "settings_path", lambda: p)
     s = paths.Settings()
-    assert s["detect_head"] is False and s["detect_precise"] is True and s["settings_rev"] == 2
+    assert s["detect_head"] is False and s["detect_precise"] is True and s["settings_rev"] == paths.SETTINGS_REV
+    # rev 3 (0.1.19): the withdrawn styles fall back to the black box
+    assert s["default_video_style"] == "black" and s["last_box_style"] is None
     # the user's later choice is respected
     s["detect_head"] = True
     s.save()

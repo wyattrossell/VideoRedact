@@ -15,6 +15,16 @@ measure in `bench/eval_autodetect.py` and the post-export verification pass inst
 | **phase6_precise.json** | **0.1.14+** | Intel iGPU | 12 / 16 176 | **123.4** | 123.4 | 198.2 | Precision rework: confident-only tracks (3+ hits at 0.7+ for faces), no person/head-fallback boxes; 99 tracks / 18 939 track-frames vs 829 / 127 744 on the same clips (`PRECISION_PROFILE.md`) |
 | release_0_1_19.json | 0.1.19 (pre-release) | Intel iGPU | 12 / 16 176 | 103.3 | 104.4 | 164.3 | Same labels as phase6 (face/screen/document/phone); 101 tracks / 18 013 track-frames. The lower numbers are the day, not the code: see the A/B note below |
 | release_0_1_19_plates.json | 0.1.19 (pre-release) | Intel iGPU | 12 / 16 176 | 86.6 | 85.7 | 185.6 | Plus `license_plate` (YOLOv9-t behind the vehicle gate): detection time +42 % (152.9 s vs 107.6 s over 3 235 detector calls, ~14 ms per call), 9 plate tracks on the 12 clips (110 tracks / 18 652 track-frames) |
+| release_0_1_20.json | 0.1.20 (pre-release) | Intel iGPU | 12 / 16 176 | 120.3 | 118.9 | 175.8 | Same labels; contrast boost in its default `auto` mode (boosts 3 % of the bench frames), zone gone, blur back: 101 tracks / 18 013 track-frames, identical to the 0.1.19 row. Faster than the morning's run (detection 96.9 s vs 107.6 s): day-to-day noise, nothing in the code got cheaper |
+| release_0_1_20_plates.json | 0.1.20 (pre-release) | Intel iGPU | 12 / 16 176 | 63.9 | 62.6 | 175.1 | Plus `license_plate` with the round-two pipeline (plate model on the whole frame and on a crop of every detected vehicle): detection 210.7 s vs 152.9 s (+38 %, the crop passes), 15 plate tracks / 2088 plate track-frames against 9 in 0.1.19 (116 tracks / 20 101 track-frames). Precision and recall of those tracks: bench/results/PLATES.md "Round two" |
+
+**0.1.20 (2026-11-02 pm):** the plate crop pass is the one measurable cost of this round:
+auto-detect with plates drops from 86.6 to 63.9 fps on clips that have vehicles in nearly every
+frame (each detected vehicle, up to four, is a second 384 px plate inference). Without plates
+nothing changed in cost: the contrast boost in `auto` mode is a thumbnail statistic per
+detection frame and boosted 32 of 1 080 sampled frames. The 15 plate tracks cover
+2088 track-frames against 9 tracks before, on the same two plates (a real one and a dealer
+plate on the stopped car; bench/results/PLATES.md). Leak rate still unmeasured (no labels).
 
 **0.1.19 (2026-11-02) versus phase6, A/B on the first 3 clips (4 044 frames), the pre-session
 commit (10f84eb) and HEAD run alternately in both orders:** auto-detect 101.4 / 109.3 fps before

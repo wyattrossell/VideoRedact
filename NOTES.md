@@ -453,7 +453,7 @@ samples/ (720p30 Axon clips), i7-14700T:
   (bench/results/ENHANCE.md): boosting every frame found ~40 real faces and ~90 junk ones
   (Chevy emblem, Axon overlay), lost 19-28, and made YOLOX drop the in-car laptop screen in
   half its frames, so YOLOX keeps the original and auto is a no-op on daylight footage
-  (auto boosted 32 of 1 080 bench frames: 8 faces gained, 0 lost). Full bench: BENCH_NOTE. Tests: 132 passed, 3 skipped. Installed copy on this
+  (auto boosted 32 of 1 080 bench frames: 8 faces gained, 0 lost). Full bench: 120.3 fps auto-detect / 175.8 export without plates (101 tracks, same as 0.1.19); with plates 63.9 fps (was 86.6: the vehicle crop passes), 15 plate tracks / 2088 track-frames vs 9 tracks before (bench/results/COMPARISON.md). Tests: 132 passed, 3 skipped. Installed copy on this
   laptop: 0.1.20 local build (not published; `installeruild.ps1 -Bump 0.1.20 -Publish` when
   Wyatt says so). Lesson: a "never redact" region cannot coexist with "redact every face";
   the overlay problem needs a different idea (e.g. move the timestamp, not exempt it).

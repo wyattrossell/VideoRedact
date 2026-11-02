@@ -17,6 +17,7 @@ or must be replaced before wide distribution) · ⚪ dev/evaluation only, not in
 | YOLOX-tiny / YOLOX-s (Megvii) | `yolox_tiny.onnx`, `yolox_s.onnx` | screens, phones, documents, people | Apache-2.0 | COCO (annotations CC BY 4.0; images Flickr terms). Standard practice treats the weights as Apache-2.0. | ✅ |
 | YOLOX-tiny fine-tuned on our footage (optional) | `yolox_tiny_doc.onnx` | documents / notepads / paper, licence plates | Apache-2.0 (YOLOX code and COCO-pretrained starting weights); training data is our own footage, pseudo-labelled by OWLv2 (Apache-2.0) and reviewed locally | HPD body-cam frames (CJIS, never leave the machine); no public dataset | 🟡 only when present |
 | ViTTrack (OpenCV Zoo) | `object_tracking_vittrack_2023sep.onnx` | single-object tracker | Apache-2.0 | GOT-10k / LaSOT / TrackingNet (academic) | ✅ |
+| YOLOv9-t licence-plate detector (open-image-models, ankandrew) | `yolo-v9-t-384-license-plates-end2end.onnx` | licence plates in auto-detect (0.1.19), kept only inside a YOLOX vehicle box | MIT (repository and release assets; the same grant OpenScrub and PrivacyCam ship under). **Provenance caveat on record:** trained with a GPL-3.0 YOLOv9 fork on a mix that includes an AGPL-3.0 repository's benchmark images; the author grants MIT and declines to warrant the weights. Wyatt accepted the MIT grant on 2026-11-02 (bench/results/PLATES.md). | Mixed public plate datasets (see caveat) | 🟡 accepted |
 | SFace (OpenCV Zoo, 2021dec) | `face_recognition_sface_2021dec.onnx` | face identity embedding: "same person" check when a manually tracked face is re-acquired after a loss (added 2026-10-29). Embeddings live only in memory during tracking; nothing is stored. | Apache-2.0 (opencv_zoo `models/face_recognition_sface/LICENSE`) | Trained by the SFace authors (Zhong et al.) on public face datasets; weights released by OpenCV Zoo under Apache-2.0 | ✅ |
 | faster-whisper `small` (Systran CTranslate2 conversion of OpenAI Whisper) | `models/whisper/...` | speech-to-text | MIT (both OpenAI's weights and Systran's conversion) | OpenAI's undisclosed web corpus | ✅ |
 | Silero VAD (inside faster-whisper, off by default) | bundled with faster-whisper | voice activity | MIT | – | ✅ |
@@ -107,6 +108,7 @@ independent re-implementation.
 | caipeijia833/doc-redaction | Apache-2.0 | Published-hash verification of bundled components (`vision/models.py` `verify_models`, the `--selftest` "model integrity" step) |
 
 Not adopted from them, for licence reasons: InsightFace SCRFD weights (non-commercial),
-Ultralytics YOLO-seg silhouettes (AGPL-3.0), SAM 3 (bespoke licence, GPU only), and the
-open-image-models YOLOv9 plate weights (MIT repository, but see bench/results/PLATES.md on the
-training provenance; both OpenScrub and PrivacyCam ship them as MIT, a decision left to Wyatt).
+Ultralytics YOLO-seg silhouettes (AGPL-3.0), SAM 3 (bespoke licence, GPU only). The
+open-image-models YOLOv9 plate weights (MIT repository; training provenance caveat in
+bench/results/PLATES.md) were accepted by Wyatt on 2026-11-02 and ship since 0.1.19 behind
+PrivacyCam's shape filters and our vehicle gate (section 1).

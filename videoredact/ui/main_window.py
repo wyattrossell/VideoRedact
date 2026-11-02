@@ -161,7 +161,7 @@ class MainWindow(QMainWindow):
             m.addAction(a)
 
         m = mb.addMenu("&Video")
-        self.a_detect = act("&Auto-detect faces / screens / documents…", self.auto_detect)
+        self.a_detect = act("&Auto-detect faces / plates / screens / documents…", self.auto_detect)
         self.a_track = act("&Track selected box (forward and backward)", self.track_selected, "T")
         self.a_join = act("&Join the next drawn box to the selected track", self.join_next_box, "J")
         self.a_person = act("Find this &person in every face track…", self.find_same_person, "P")
@@ -1367,9 +1367,10 @@ class MainWindow(QMainWindow):
 <b>2. Audio:</b> Audio ▸ Transcribe. In the Transcript tab select words, right-click ▸ Redact,
 or ▸ Redact every occurrence. Use the search box to find a word everywhere.
 Audio ▸ Suggest sensitive speech finds phone numbers, names after cues, addresses, dates of birth.<br>
-<b>3. Video:</b> Video ▸ Auto-detect finds faces, screens, documents and phones. By default it keeps only confident
-detections (a face must be seen 3+ times at 70 %+ confidence); untick that option to find everything and delete the
-false hits yourself. Drag a box on the video around anything else (a license plate, a tattoo, a notepad): it is tracked
+<b>3. Video:</b> Video ▸ Auto-detect finds faces, licence plates (on detected vehicles), screens, documents and phones.
+By default it keeps only confident detections (a face must be seen 3+ times at 70 %+ confidence); untick that option to
+find everything and delete the false hits yourself. Drag a box on the video around anything else (a plate the detector
+missed, a tattoo, a notepad): it is tracked
 forward and backward immediately with the last label and style, and stops once the object has been out of view for 8 s.
 Shift+drag asks for the label, style and tracking options first. If a track is selected and you draw a box in one of
 its gaps (within 10 s of where it stopped), the box continues that track instead of starting a new one; press J first

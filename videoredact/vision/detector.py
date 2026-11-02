@@ -28,11 +28,17 @@ COCO_TO_LABEL = {
     73: "document", # book
     66: "keyboard",
     64: "mouse",
+    # vehicles are never redacted themselves; they gate the plate detector (detectors/plates.py VehicleGate)
+    2: "vehicle",   # car
+    3: "vehicle",   # motorcycle
+    5: "vehicle",   # bus
+    7: "vehicle",   # truck
 }
 # Labels the UI can offer for automatic detection
-AUTO_LABELS = ["face", "screen", "document", "phone", "person"]
+AUTO_LABELS = ["face", "license_plate", "screen", "document", "phone", "person"]
 LABEL_DESCRIPTIONS = {
     "face": "Faces (YuNet)",
+    "license_plate": "Licence plates on vehicles (YOLOv9-t; kept only where a car, truck, bus or motorcycle is detected)",
     "screen": "Computer / TV screens and laptops",
     "document": "Papers, notepads, books",
     "phone": "Cell phones",

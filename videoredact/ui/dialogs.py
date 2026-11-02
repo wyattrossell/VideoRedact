@@ -215,8 +215,9 @@ class AutoDetectDialog(QDialog):
             cb.setChecked(lbl in settings["detect_classes"])
             self.checks[lbl] = cb
             lay.addWidget(cb)
-        note = QLabel("License plates: no permissively-licensed CPU model is available yet. "
-                      "Draw a box around a plate and use Track object instead.")
+        note = QLabel("Licence plates are kept only where they sit on a detected vehicle (car, truck, bus, motorcycle): "
+                      "on our footage the plate model also fires on laptop screens, shirts and notepads. A plate held "
+                      "in the hand, or on a vehicle the detector misses, needs a drawn box.")
         note.setWordWrap(True)
         note.setStyleSheet("color: gray")
         lay.addWidget(note)

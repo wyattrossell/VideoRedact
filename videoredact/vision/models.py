@@ -59,6 +59,11 @@ MODELS: dict[str, ModelSpec] = {
         "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
         "Apache-2.0", "Face identity embedding: same-person check when a tracked face is re-acquired", 30_000_000,
         "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"),
+    "plate_yolov9t": ModelSpec(
+        "plate_yolov9t", "yolo-v9-t-384-license-plates-end2end.onnx",
+        "https://github.com/ankandrew/open-image-models/releases/download/assets/yolo-v9-t-384-license-plates-end2end.onnx",
+        "MIT", "Licence-plate detector (YOLOv9-t 384 px, NMS inside; open-image-models). Kept only on detected vehicles.", 5_000_000,
+        "888397b96d761c89db40bc9c305838e8652660f5e282c2cadebbe8d2951a77a8"),
     # Optional, no download source: produced by train/finetune_yolox.py from our own pseudo-labelled
     # footage (train/pseudolabel_openvocab.py). Bundled when present in models/; skipped when absent.
     "yolox_tiny_doc": ModelSpec(

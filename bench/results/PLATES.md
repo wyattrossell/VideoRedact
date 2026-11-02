@@ -32,7 +32,38 @@ driver's licences and a "SERVICE" sign. The clips (a crash scene and a traffic s
 readable plates, so recall cannot be judged here, but precision on plate-like rectangles is poor
 for both, and the RT-DETR speed rules it out for the sampled-frame pipeline anyway.
 
-## Decision (for Saturday)
+## Decision of 2026-11-02: ship the open-image-models YOLOv9-t, gated
+
+Wyatt accepted the author's MIT grant (the way OpenScrub and PrivacyCam ship the same file;
+the provenance caveat above stays on record in docs/LICENSES.md). The file is in the model
+registry as `plate_yolov9t` with its SHA-256 (`888397b9…`, identical upstream and in
+PrivacyCam's bundle), bundled by the installer, 20 ms per 720p frame on the CPU.
+
+Precision is the problem the first evaluation found, so two filters sit in front of it
+(`vision/detectors/plates.py`):
+
+* PrivacyCam's shape filters: aspect ratio 1.1-8, boxes under 6x3 input px or over 35 % of
+  the input dropped, at most 20 per frame, 10 % extra height each side.
+* **Vehicle gate**: a plate is kept only when at least 80 % of it lies inside a COCO vehicle
+  box (car, truck, bus, motorcycle) from the YOLOX detector that runs in the same pass. A
+  plate held in the hand, or on a vehicle YOLOX misses, needs a drawn box.
+
+Measured on the 12 bench clips, every 15th frame (1 080 frames), `bench/eval_plates.py`:
+
+| | detections | per frame | ms / frame | what the contact sheet shows |
+|---|---|---|---|---|
+| raw model, threshold 0.2 | 397 | 0.368 | 19.8 | in-car laptop screen and keyboard in hundreds of frames, 9/11 shirts, notepads, a driver's licence, the Axon timestamp overlay (0.55) |
+| shipped pipeline (threshold 0.5 + shape filters + vehicle gate) | 22 | 0.020 | 37.6 (YOLOX-tiny vehicles + plates) | a dealer "USA" plate on a car (6 frames), one real plate (0.69), a driver's licence held beside a car (0.79), a white sheet of paper on a vehicle (8 frames), a "GEAR" badge, a QR code, two shirts |
+
+The gate removes the laptop screen entirely (it is never inside a vehicle box when filmed from
+the driver's seat). What remains is plate-shaped things on vehicles; the sheet of paper is the
+kind of false hit the reviewer deletes with one key. Raising the threshold does not separate
+them (the paper scores 0.70-0.84, the real plate 0.69), so the threshold stays at 0.5 and the
+track-level rule (2+ detections) does the rest. The clips contain few plates, so recall is
+still unmeasured: the gate is Wyatt's traffic-stop footage with visible plates, scored with
+`bench/track_eval.py --classes license_plate` once reference projects exist.
+
+## Decision of 2026-10-29 (superseded above)
 
 * Nothing ships for plates in the next release; plates stay a manual box (classic engine) until
   a detector earns its place. The adapter `vision/detectors/plates.py` is written for the RT-DETR

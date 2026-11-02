@@ -92,6 +92,8 @@ class AutoDetectOptions:
     emit_person_boxes: bool = False  # whole-body boxes from the head-fallback person detector; False = only when "person" is a label
     doc_model: str = "yolox_tiny_doc"  # fine-tuned document/plate detector (train/); ignored when the file is absent
     doc_conf: float = 0.35
+    plate_conf: float = 0.5    # YOLOv9-t plate score cut (PrivacyCam ships 0.4; our false hits score up to 0.84, so the gate below matters more)
+    plate_vehicle_gate: bool = True  # keep a plate only inside a YOLOX vehicle box (detectors/plates.py VehicleGate)
     face_pad: float = 0.25     # dilation of face/head boxes (fraction of box size)
     face_shape: str = "ellipse"
     detector_cfg: Optional[dict] = None   # override for detectors.build()
@@ -151,6 +153,8 @@ def build_detector(opts: "AutoDetectOptions"):
     cfg.setdefault("emit_person_boxes", opts.emit_person_boxes)
     cfg.setdefault("doc_model", opts.doc_model)
     cfg.setdefault("doc_conf", opts.doc_conf)
+    cfg.setdefault("plate_conf", opts.plate_conf)
+    cfg.setdefault("plate_vehicle_gate", opts.plate_vehicle_gate)
     cfg.setdefault("doc_labels", [l for l in opts.labels if l in ("document", "plate", "license_plate")])
     cfg.setdefault("threads", opts.threads)
     return build(cfg)

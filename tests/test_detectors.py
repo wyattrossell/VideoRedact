@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from videoredact.core.model import BBox, Span, VideoTrack
 from videoredact.vision.detectors.base import Detection, Detector, nms_merge
@@ -145,3 +146,59 @@ def test_track_trim_extend_flags():
     assert t.last_frame() == 220 and t.bbox_at(220) is not None
     t.trim_end(100)      # cut before the span start -> span removed
     assert not t.spans
+
+
+# ------------------------------------------------------------------ licence plates ----
+def test_plate_rows_are_filtered_like_privacycam_and_mapped_back():
+    """YOLOv9-t rows in letterboxed 384 px input pixels -> frame boxes; tall boxes, huge boxes,
+    low scores and duplicates are dropped; the output is capped at 20 per frame."""
+    from videoredact.vision.detectors.plates import decode_plate_rows, letterbox, PLATE_MAX_PER_FRAME
+    W, H = 1280, 720
+    _, r, dx, dy = letterbox(np.zeros((H, W, 3), np.uint8), 384)
+    assert abs(r - 0.3) < 1e-6 and dx == 0 and dy == 84
+    def row(x1, y1, x2, y2, s):
+        return [0, x1, y1, x2, y2, 0, s]
+    rows = [row(100, 150, 160, 170, 0.9),      # a plate: 60x20 -> aspect 3
+            row(100, 150, 110, 190, 0.9),      # taller than wide: dropped (aspect 0.25)
+            row(0, 0, 383, 383, 0.95),         # fills the input: dropped (area)
+            row(200, 200, 260, 220, 0.3),      # below threshold
+            row(101, 151, 161, 171, 0.8)]      # duplicate of the first (IoU > 0.55)
+    dets = decode_plate_rows(np.array(rows, np.float32), W, H, r, dx, dy, 0.5)
+    assert len(dets) == 1 and dets[0].label == "license_plate" and abs(dets[0].score - 0.9) < 1e-6
+    x0, y0, x1, y1 = dets[0].bbox.to_pixels(W, H)
+    # 100..160 / 0.3 -> 333..533 wide; 150..170 - 84 offset / 0.3 -> 220..287 tall, padded 10 % each side
+    assert (x0, x1) == (333, 533) and y0 == 213 and y1 == 293
+    many = np.array([row(10 + 20 * i, 100, 10 + 20 * i + 12, 104, 0.6) for i in range(18)]
+                    + [row(10 + 20 * i, 200, 10 + 20 * i + 12, 204, 0.6) for i in range(18)], np.float32)
+    assert len(decode_plate_rows(many, W, H, r, dx, dy, 0.5)) == PLATE_MAX_PER_FRAME
+
+
+def test_vehicle_gate_keeps_plates_on_vehicles_only():
+    from videoredact.vision.detectors.plates import VehicleGate
+    car = (BBox(0.5, 0.4, 0.4, 0.5), "vehicle", 0.8)
+    on_car = (BBox(0.6, 0.7, 0.1, 0.04), "license_plate", 0.9)
+    laptop = (BBox(0.1, 0.1, 0.2, 0.08), "license_plate", 0.95)    # the in-car screen, nowhere near a vehicle
+    face = (BBox(0.1, 0.5, 0.1, 0.15), "face", 0.9)
+    inner = Fake([car, on_car, laptop, face])
+    inner.labels = {"vehicle", "license_plate", "face"}
+    out = VehicleGate(inner).detect([np.zeros((10, 10, 3), np.uint8)])[0]
+    assert [(d.label, d.score) for d in out] == [("license_plate", 0.9), ("face", 0.9)]
+    assert "vehicle" not in VehicleGate(inner).labels
+    kept = VehicleGate(inner, keep_vehicles=True).detect([np.zeros((10, 10, 3), np.uint8)])[0]
+    assert [d.label for d in kept] == ["vehicle", "license_plate", "face"]
+
+
+def test_build_with_plates_adds_the_vehicle_gate():
+    from videoredact.vision import models as reg
+    if not reg.is_available("plate_yolov9t") or not reg.is_available("yolox_tiny"):
+        pytest.skip("plate / object models not installed")
+    from videoredact.vision.detectors import build, VehicleGate, EnsembleDetector
+    det = build({"face": "", "objects": ["license_plate"], "face_pad": 0})
+    assert isinstance(det, VehicleGate) and isinstance(det.inner, EnsembleDetector)
+    names = sorted(m.name for m in det.inner.members)
+    assert names == ["plate_yolov9t", "yolox_tiny"]
+    yolox = next(m for m in det.inner.members if m.name == "yolox_tiny")
+    assert yolox.labels == {"vehicle"}
+    assert "vehicle" not in det.labels and "license_plate" in det.labels
+    # the gate can be switched off (bench comparisons)
+    assert not isinstance(build({"face": "", "objects": ["license_plate"], "plate_vehicle_gate": False, "face_pad": 0}), VehicleGate)

@@ -9,12 +9,15 @@ bench/results/PLATES.md):
            "Vehicle registration plate" (Apache-2.0 code+weights, CC-BY data). Fixed 1x3x640x640,
            RGB /255, outputs logits (1,300,1) + boxes (1,300,4) cxcywh normalized; scores are
            compressed (top box ~0.1), threshold ~0.05.
-  yolov9t  open-image-models yolo-v9-t-384 end2end (MIT repo; weights/data terms unclear, so
-           benchmark only, never shipped). Input 1x3x384x384 RGB /255 letterboxed, output
-           (N,7) [batch, x1, y1, x2, y2, class, score] in letterboxed pixels.
+  yolov9t  open-image-models yolo-v9-t-384 end2end (MIT; shipped since 0.1.19). Input
+           1x3x384x384 RGB /255 letterboxed, output (N,7) [batch, x1, y1, x2, y2, class, score]
+           in letterboxed pixels. Raw model, no filters.
+  pipeline the shipped pipeline (`detectors.build` with objects=["license_plate"]): the same
+           model behind PrivacyCam's shape filters and the vehicle gate (plates kept only inside
+           a YOLOX vehicle box). The path after "=" is ignored. `--nogate` switches the gate off.
 
-Usage: python bench/eval_plates.py --models rtdetr=path/to/plate_rtdetr.onnx yolov9t=path/to/yolo-v9-t-384.onnx
-          [--clips bench/clips] [--stride 15] [--out bench/results/plates]
+Usage: python bench/eval_plates.py --models rtdetr=path/to/plate_rtdetr.onnx yolov9t=path/to/yolo-v9-t-384.onnx pipeline=x
+          [--clips bench/clips] [--stride 15] [--out bench/results/plates] [--nogate]
 """
 from __future__ import annotations
 
@@ -94,6 +97,26 @@ class YoloV9Plate:
         return dets
 
 
+class PipelinePlates:
+    """The shipped detector pipeline for plates (vision/detectors/__init__.py build)."""
+
+    def __init__(self, thr: float = 0.5, gate: bool = True, threads: int = 0):
+        from videoredact.vision.detectors import build
+        self.det = build({"face": "", "objects": ["license_plate"], "plate_conf": thr, "plate_vehicle_gate": gate,
+                          "face_pad": 0, "threads": threads})
+        self.name = "pipeline" if gate else "pipeline_nogate"
+
+    def detect(self, frame: np.ndarray):
+        H, W = frame.shape[:2]
+        dets = []
+        for d in self.det.detect_one(frame):
+            if d.label != "license_plate":
+                continue
+            x0, y0, x1, y1 = d.bbox.to_pixels(W, H)
+            dets.append((x0, y0, x1 - x0, y1 - y0, float(d.score)))
+        return dets
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", nargs="+", required=True, help="name=path (rtdetr=..., yolov9t=...)")
@@ -101,6 +124,7 @@ def main():
     ap.add_argument("--stride", type=int, default=15)
     ap.add_argument("--out", default="bench/results/plates")
     ap.add_argument("--thr", type=float, default=0.0, help="override the detector's default threshold")
+    ap.add_argument("--nogate", action="store_true", help="pipeline without the vehicle gate")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     dets = {}
@@ -110,6 +134,8 @@ def main():
             dets[name] = RTDETRPlate(path, a.thr or 0.05)
         elif name == "yolov9t":
             dets[name] = YoloV9Plate(path, a.thr or 0.3)
+        elif name == "pipeline":
+            dets[name] = PipelinePlates(a.thr or 0.5, gate=not a.nogate)
         else:
             raise SystemExit(f"unknown model {name}")
     results = {n: dict(frames=0, dets=0, ms=0.0, crops=[]) for n in dets}

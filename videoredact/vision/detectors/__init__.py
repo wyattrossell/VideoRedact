@@ -5,7 +5,9 @@
     det.detect([frame1, frame2]) -> [[Detection,...], [...]]
 
 Face backends: yunet (default, MIT), centerface (MIT), scrfd (eval only), egoblur (eval only, torch).
-Object backend: yolox_tiny / yolox_s (Apache). Open-vocabulary: see openvocab.py (eval only).
+Object backend: yolox_tiny / yolox_s (Apache). Plates: "license_plate" in objects adds the
+YOLOv9-t plate detector (MIT) gated by YOLOX vehicle boxes (cfg "plate_vehicle_gate", default
+on; "plate_conf", default 0.5). Open-vocabulary: see openvocab.py (eval only).
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ from typing import Any, Optional
 
 from .base import Detection, Detector, PerFrameDetector, nms_merge
 from .wrappers import EdgeAssist, EnsembleDetector, HeadFallback, MultiScaleDetector, TiledDetector
+from .plates import VehicleGate
 
 FACE_BACKENDS = ("yunet", "yunet_cv", "centerface", "scrfd", "egoblur")
 
@@ -57,12 +60,21 @@ def build(cfg: dict[str, Any]) -> Detector:
                                   edge_assist=bool(cfg.get("edge_assist", False))))
     objects = set(cfg.get("objects") or [])
     person_requested = "person" in objects
+    vehicles_requested = "vehicle" in objects
+    plates = bool(objects & {"license_plate", "plate"})
+    objects -= {"license_plate", "plate"}
+    plate_gate = plates and bool(cfg.get("plate_vehicle_gate", True))
+    if plate_gate:
+        objects.add("vehicle")
     if cfg.get("head_fallback") and "person" not in objects:
         objects.add("person")
     if objects:
         from . import adapters
         members.append(adapters.YOLOXDetector(cfg.get("object_model", "yolox_tiny"), float(cfg.get("obj_conf", 0.35)),
                                               labels=objects, threads=threads))
+    if plates:
+        from .plates import YoloV9PlateDetector
+        members.append(YoloV9PlateDetector(float(cfg.get("plate_conf", 0.5)), threads=threads))
     # Fine-tuned detector for classes COCO lacks (document / notepad / paper, licence plate): trained
     # with train/finetune_yolox.py on our own footage; used only when the model file is present.
     doc_model = cfg.get("doc_model")
@@ -77,6 +89,8 @@ def build(cfg: dict[str, Any]) -> Detector:
         from .openvocab import GroundingDinoDetector
         members.append(GroundingDinoDetector(prompts=cfg["open_vocab"], score_thr=float(cfg.get("ov_conf", 0.3))))
     det: Detector = members[0] if len(members) == 1 else EnsembleDetector(members)
+    if plate_gate:
+        det = VehicleGate(det, keep_vehicles=vehicles_requested)
     if cfg.get("head_fallback") or float(cfg.get("face_pad", 0)) > 0:
         # emit_person_boxes: None (default) = keep the historical behaviour (whole-body boxes come
         # out even when only faces were asked for); False = only when "person" was requested.
@@ -87,4 +101,4 @@ def build(cfg: dict[str, Any]) -> Detector:
 
 
 __all__ = ["Detection", "Detector", "PerFrameDetector", "nms_merge", "EdgeAssist", "EnsembleDetector", "HeadFallback",
-           "MultiScaleDetector", "TiledDetector", "build", "build_face", "FACE_BACKENDS"]
+           "MultiScaleDetector", "TiledDetector", "VehicleGate", "build", "build_face", "FACE_BACKENDS"]

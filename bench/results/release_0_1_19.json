@@ -1,0 +1,425 @@
+{
+ "version": "0.1.17",
+ "date": "2026-11-02 12:23",
+ "hardware": "Intel(R) Core(TM) i7-14700T (20c/28t), 64 GB, Windows 11 (10.0.26200); tier=intel via openvino:GPU.0 [Intel Intel(R) UHD Graphics 770]",
+ "python": "3.13.14",
+ "settings": {
+  "stride": 5,
+  "detect_labels": [
+   "face",
+   "screen",
+   "document",
+   "phone"
+  ],
+  "cover_threshold": 0.9,
+  "gt_classes": [
+   "redacted"
+  ]
+ },
+ "clips": [
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__01-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 69.8,
+    "export": 100.3,
+    "autodetect_parallel": 70.0
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 19.299047000007704,
+   "tracks_file": "bench\\tracks\\10-04-2026_MVA_Saguaro_and_Arroyo_Tr__01-00.json",
+   "tracks": 20,
+   "track_frames": 2371,
+   "stage_s": {
+    "decode_detect_pass": 1.958,
+    "detect": 10.302,
+    "track": 1.525,
+    "detect_calls": 271,
+    "assoc_other": 5.515,
+    "decode_export_pass": 4.458,
+    "redact": 0.758,
+    "encode_and_pipe": 8.22
+   },
+   "export_total_s": 13.436102500068955,
+   "autodetect_parallel_total_s": 19.258136600023136,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__06-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 82.0,
+    "export": 131.1,
+    "autodetect_parallel": 87.8
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 16.43867910001427,
+   "tracks_file": "bench\\tracks\\10-04-2026_MVA_Saguaro_and_Arroyo_Tr__06-00.json",
+   "tracks": 11,
+   "track_frames": 3282,
+   "stage_s": {
+    "decode_detect_pass": 2.143,
+    "detect": 9.962,
+    "track": 1.265,
+    "detect_calls": 271,
+    "assoc_other": 3.07,
+    "decode_export_pass": 3.675,
+    "redact": 0.937,
+    "encode_and_pipe": 5.668
+   },
+   "export_total_s": 10.279366399976425,
+   "autodetect_parallel_total_s": 15.35597339994274,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__11-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 82.2,
+    "export": 148.7,
+    "autodetect_parallel": 82.7
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 16.39814559998922,
+   "tracks_file": "bench\\tracks\\10-04-2026_MVA_Saguaro_and_Arroyo_Tr__11-00.json",
+   "tracks": 20,
+   "track_frames": 3466,
+   "stage_s": {
+    "decode_detect_pass": 1.926,
+    "detect": 9.433,
+    "track": 2.843,
+    "detect_calls": 270,
+    "assoc_other": 2.196,
+    "decode_export_pass": 2.93,
+    "redact": 0.686,
+    "encode_and_pipe": 5.449
+   },
+   "export_total_s": 9.065354000078514,
+   "autodetect_parallel_total_s": 16.290417700074613,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__16-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 88.2,
+    "export": 203.7,
+    "autodetect_parallel": 85.6
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 15.27486439992208,
+   "tracks_file": "bench\\tracks\\10-04-2026_MVA_Saguaro_and_Arroyo_Tr__16-00.json",
+   "tracks": 14,
+   "track_frames": 2199,
+   "stage_s": {
+    "decode_detect_pass": 1.866,
+    "detect": 9.231,
+    "track": 3.044,
+    "detect_calls": 270,
+    "assoc_other": 1.133,
+    "decode_export_pass": 2.304,
+    "redact": 1.159,
+    "encode_and_pipe": 3.153
+   },
+   "export_total_s": 6.616156299947761,
+   "autodetect_parallel_total_s": 15.754749999963678,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__21-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 117.3,
+    "export": 187.2,
+    "autodetect_parallel": 114.5
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 11.493784100050107,
+   "tracks_file": "bench\\tracks\\10-04-2026_MVA_Saguaro_and_Arroyo_Tr__21-00.json",
+   "tracks": 0,
+   "track_frames": 0,
+   "stage_s": {
+    "decode_detect_pass": 1.772,
+    "detect": 9.511,
+    "track": 0.299,
+    "detect_calls": 270,
+    "assoc_other": 0.0,
+    "decode_export_pass": 2.797,
+    "redact": 0.0,
+    "encode_and_pipe": 4.405
+   },
+   "export_total_s": 7.201652399962768,
+   "autodetect_parallel_total_s": 11.772101699956693,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__26-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 96.6,
+    "export": 199.9,
+    "autodetect_parallel": 97.6
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 13.950875899987295,
+   "tracks_file": "bench\\tracks\\10-04-2026_MVA_Saguaro_and_Arroyo_Tr__26-00.json",
+   "tracks": 4,
+   "track_frames": 1166,
+   "stage_s": {
+    "decode_detect_pass": 1.968,
+    "detect": 9.575,
+    "track": 1.542,
+    "detect_calls": 270,
+    "assoc_other": 0.865,
+    "decode_export_pass": 2.741,
+    "redact": 0.941,
+    "encode_and_pipe": 3.062
+   },
+   "export_total_s": 6.743553499924019,
+   "autodetect_parallel_total_s": 13.816855399985798,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__31-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 112.5,
+    "export": 197.5,
+    "autodetect_parallel": 120.1
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 11.983957599964924,
+   "tracks_file": "bench\\tracks\\10-04-2026_MVA_Saguaro_and_Arroyo_Tr__31-00.json",
+   "tracks": 5,
+   "track_frames": 500,
+   "stage_s": {
+    "decode_detect_pass": 1.789,
+    "detect": 9.513,
+    "track": 0.659,
+    "detect_calls": 270,
+    "assoc_other": 0.023,
+    "decode_export_pass": 2.515,
+    "redact": 0.46,
+    "encode_and_pipe": 3.85
+   },
+   "export_total_s": 6.825556499999948,
+   "autodetect_parallel_total_s": 11.2237530000275,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_MVA_Saguaro_and_Arroyo_Tr__36-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 157.3,
+    "export": 218.7,
+    "autodetect_parallel": 138.7
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 8.569937699940056,
+   "tracks_file": "bench\\tracks\\10-04-2026_MVA_Saguaro_and_Arroyo_Tr__36-00.json",
+   "tracks": 0,
+   "track_frames": 0,
+   "stage_s": {
+    "decode_detect_pass": 1.276,
+    "detect": 7.536,
+    "track": 0.07,
+    "detect_calls": 270,
+    "assoc_other": 0.0,
+    "decode_export_pass": 2.657,
+    "redact": 0.0,
+    "encode_and_pipe": 3.507
+   },
+   "export_total_s": 6.163291199947707,
+   "autodetect_parallel_total_s": 9.720629599993117,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_Traffic_Stop_N_Preston_Hwy_an_01-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 123.9,
+    "export": 179.0,
+    "autodetect_parallel": 131.8
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 10.876043700031005,
+   "tracks_file": "bench\\tracks\\10-04-2026_Traffic_Stop_N_Preston_Hwy_an_01-00.json",
+   "tracks": 6,
+   "track_frames": 744,
+   "stage_s": {
+    "decode_detect_pass": 1.355,
+    "detect": 8.221,
+    "track": 0.927,
+    "detect_calls": 270,
+    "assoc_other": 0.373,
+    "decode_export_pass": 2.519,
+    "redact": 0.374,
+    "encode_and_pipe": 4.636
+   },
+   "export_total_s": 7.529283099924214,
+   "autodetect_parallel_total_s": 10.228848000057042,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_Traffic_Stop_N_Preston_Hwy_an_06-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 131.7,
+    "export": 221.3,
+    "autodetect_parallel": 144.5
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 10.237322200089693,
+   "tracks_file": "bench\\tracks\\10-04-2026_Traffic_Stop_N_Preston_Hwy_an_06-00.json",
+   "tracks": 7,
+   "track_frames": 716,
+   "stage_s": {
+    "decode_detect_pass": 1.396,
+    "detect": 8.231,
+    "track": 0.591,
+    "detect_calls": 270,
+    "assoc_other": 0.019,
+    "decode_export_pass": 2.721,
+    "redact": 0.349,
+    "encode_and_pipe": 3.022
+   },
+   "export_total_s": 6.091380099998787,
+   "autodetect_parallel_total_s": 9.328645700006746,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "10-04-2026_Traffic_Stop_N_Preston_Hwy_an_11-00.mp4",
+   "width": 1280,
+   "height": 720,
+   "fps": {
+    "autodetect": 152.9,
+    "export": 216.0,
+    "autodetect_parallel": 150.2
+   },
+   "frames": 1348,
+   "duration_s": 45.01,
+   "autodetect_total_s": 8.813540900009684,
+   "tracks_file": "bench\\tracks\\10-04-2026_Traffic_Stop_N_Preston_Hwy_an_11-00.json",
+   "tracks": 3,
+   "track_frames": 314,
+   "stage_s": {
+    "decode_detect_pass": 1.235,
+    "detect": 7.461,
+    "track": 0.228,
+    "detect_calls": 270,
+    "assoc_other": 0.0,
+    "decode_export_pass": 2.75,
+    "redact": 0.26,
+    "encode_and_pipe": 3.229
+   },
+   "export_total_s": 6.239372399984859,
+   "autodetect_parallel_total_s": 8.975841999985278,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  },
+  {
+   "clip": "_1080p_test.mp4",
+   "width": 1920,
+   "height": 1080,
+   "fps": {
+    "autodetect": 101.5,
+    "export": 110.0,
+    "autodetect_parallel": 102.5
+   },
+   "frames": 1348,
+   "duration_s": 44.98,
+   "autodetect_total_s": 13.277539699920453,
+   "tracks_file": "bench\\tracks\\_1080p_test.json",
+   "tracks": 11,
+   "track_frames": 3255,
+   "stage_s": {
+    "decode_detect_pass": 0.0,
+    "detect": 8.586,
+    "track": 0.838,
+    "detect_calls": 271,
+    "assoc_other": 3.853,
+    "decode_export_pass": 6.133,
+    "redact": 1.141,
+    "encode_and_pipe": 4.978
+   },
+   "export_total_s": 12.251689399941824,
+   "autodetect_parallel_total_s": 13.153727400000207,
+   "accuracy": {
+    "labelled_frames": 0,
+    "note": "no labels for this clip"
+   }
+  }
+ ],
+ "aggregate": {
+  "clips": 12,
+  "frames": 16176,
+  "autodetect_fps": 103.3,
+  "export_fps": 164.3,
+  "autodetect_parallel_fps": 104.4,
+  "stage_share": {
+   "decode_detect_pass": 18.68,
+   "detect": 107.56,
+   "track": 13.83,
+   "assoc_other": 17.05,
+   "decode_export_pass": 38.2,
+   "redact": 7.06,
+   "encode_and_pipe": 53.18
+  },
+  "accuracy": {
+   "labelled_frames": 0,
+   "note": "no ground truth yet - run the labeling workflow in bench/README.md"
+  }
+ }
+}

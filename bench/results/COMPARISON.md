@@ -13,6 +13,21 @@ measure in `bench/eval_autodetect.py` and the post-export verification pass inst
 | phase3_openvino.json | 0.1.8 | Intel iGPU | 3 / 4 044 | 63.0 | – | 180.2 | OpenVINO runner |
 | **phase4.json** | **0.1.10** | Intel iGPU | 12 / 16 176 | **83.8** | 84.8 | 198.3 | Phase 3 streams + adaptive stride, Phase 4 audit (source re-hash + manifest per export) |
 | **phase6_precise.json** | **0.1.14+** | Intel iGPU | 12 / 16 176 | **123.4** | 123.4 | 198.2 | Precision rework: confident-only tracks (3+ hits at 0.7+ for faces), no person/head-fallback boxes; 99 tracks / 18 939 track-frames vs 829 / 127 744 on the same clips (`PRECISION_PROFILE.md`) |
+| release_0_1_19.json | 0.1.19 (pre-release) | Intel iGPU | 12 / 16 176 | 103.3 | 104.4 | 164.3 | Same labels as phase6 (face/screen/document/phone); 101 tracks / 18 013 track-frames. The lower numbers are the day, not the code: see the A/B note below |
+| release_0_1_19_plates.json | 0.1.19 (pre-release) | Intel iGPU | 12 / 16 176 | 86.6 | 85.7 | 185.6 | Plus `license_plate` (YOLOv9-t behind the vehicle gate): detection time +42 % (152.9 s vs 107.6 s over 3 235 detector calls, ~14 ms per call), 9 plate tracks on the 12 clips (110 tracks / 18 652 track-frames) |
+
+**0.1.19 (2026-11-02) versus phase6, A/B on the first 3 clips (4 044 frames), the pre-session
+commit (10f84eb) and HEAD run alternately in both orders:** auto-detect 101.4 / 109.3 fps before
+versus 107.6 / 109.1 after (no change); export 210.9 / 199.9 before versus 161.7 / 159.1 after.
+The export gap was traced to the FFmpeg binary, not the code: the old-commit worktree had no
+`bin/` folder and launched the imageio-ffmpeg binary from local disk, while the repo launches
+`binfmpeg.exe` from the network share, which costs about 0.3 s per FFmpeg process (an export
+starts four: probe, audio decode, encode, two metadata reads). With `VIDEOREDACT_FFMPEG` pointing
+HEAD at the local binary, a bare one-clip export took 3.9 / 5.7 s against 4.1 / 6.6 s before.
+The installed app ships its FFmpeg locally, so agencies never pay this; the bench on a
+redirected-desktop checkout does. Consecutive identical runs of the encoder on this laptop also
+vary by up to 40 % (3.9 s and 5.7 s for the same clip), so export fps rows across days are
+noise unless measured back to back. Leak rate is still unmeasured (no labels).
 
 Precision rework vs Phase 4: auto-detect +47 % (fewer boxes to carry between detections), export
 unchanged. Leak rate on labelled footage is still unmeasured; on the reference pair the only

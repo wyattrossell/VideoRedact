@@ -446,6 +446,14 @@ samples/ (720p30 Axon clips), i7-14700T:
   VFR normalisation) and released as 0.1.19. Plate precision on the bench clips: 397 raw
   hits -> 22 gated on 1 080 frames (PLATES.md); recall still unmeasured (no plate labels).
   The Axon overlay zone is a fixed default (x 0.615, y 0.012, w 0.37, h 0.115), not detected.
+  0.1.19 built, published (GitHub release v0.1.19, 741 MB), installed per-user on this
+  laptop and self-tested: ALL OK, 7 model files match the registry hashes, 0 network
+  attempts. Installed copy on this laptop: 0.1.19 (0.1.18 was never released; its changes
+  are in 0.1.19). Bench gotcha found on the way: from this redirected-desktop checkout every
+  FFmpeg launch costs ~0.3 s extra because bin/ffmpeg.exe lives on the share; set
+  VIDEOREDACT_FFMPEG to a local binary before comparing export fps across commits
+  (bench/results/COMPARISON.md). Next: Wyatt's hands-on test of 0.1.19 (plates on traffic
+  stops, the overlay zone on his footage, the edit-scope default, a phone clip).
 
 - 2026-10-14: Phase 0 audit. docs/ARCHITECTURE_CURRENT.md documents the
   pipeline and 24 weaknesses with file:line refs. New vision/accel.py detects

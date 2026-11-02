@@ -48,3 +48,6 @@ bench/tracks/
 train/pseudo*/
 train/data/
 train/runs/
+# runtime side-products the bench leaves in models/ when VIDEOREDACT_MODELS points here (never bundle them)
+models/cache/
+models/*_dyn.onnx

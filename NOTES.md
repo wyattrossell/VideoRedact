@@ -437,6 +437,16 @@ samples/ (720p30 Axon clips), i7-14700T:
   Label Studio 1.23 installed at C:\dev\venv-labelstudio (bench\label.ps1).
   docs/UPGRADE_PLAN.md written; waiting for approval before changing the pipeline.
 
+- 2026-11-02: Wyatt answered the seven questions of 2026-10-31: (1) accept the MIT grant on
+  the open-image-models plate weights and ship them; (2) never redact the timestamp; (3) P
+  is enough, no automatic people gallery; (4) normalise variable frame rate when needed;
+  (5) self-hashed manifest is enough, no signing; (6) box edit scope "from here onward" and
+  also backwards; (7) black box or blue only, no pixelate, strengths unchanged. Built the
+  same day as five commits (styles, plates with vehicle gate, edit scope, protected zone,
+  VFR normalisation) and released as 0.1.19. Plate precision on the bench clips: 397 raw
+  hits -> 22 gated on 1 080 frames (PLATES.md); recall still unmeasured (no plate labels).
+  The Axon overlay zone is a fixed default (x 0.615, y 0.012, w 0.37, h 0.115), not detected.
+
 - 2026-10-14: Phase 0 audit. docs/ARCHITECTURE_CURRENT.md documents the
   pipeline and 24 weaknesses with file:line refs. New vision/accel.py detects
   hardware (dev laptop: RTX 3050 Ti + UHD 770, only CPU runtimes installed ->

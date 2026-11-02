@@ -8,6 +8,27 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 ## [Unreleased]
 
 ### Added
+- **Licence plates in auto-detect.** The open-image-models YOLOv9-t plate detector (MIT; the
+  same file OpenScrub and PrivacyCam ship) is bundled and runs with the other detectors. A
+  plate is kept only where it sits on a detected vehicle (car, truck, bus, motorcycle) and
+  passes PrivacyCam's shape filters: on our clips that takes the raw model from 397 hits to 22
+  on 1,080 sampled frames and removes the in-car laptop screen entirely. What remains is
+  plate-shaped things on vehicles. Measurement and caveats: bench/results/PLATES.md.
+- **Protected zone: the camera's timestamp is never redacted.** New projects get a zone over
+  the Axon overlay (top right); nothing is ever redacted inside it, whatever track covers it,
+  and auto-detect ignores detections that lie inside it (the overlay looked like a face to
+  the edge-assist option and like a plate to the plate model). Drag the green dashed box to
+  fit another camera; the Video menu turns it off or resets it. Recorded in the project, the
+  audit manifest (`redactions.protected_zones`), the PDF and the CSV.
+- **Box edit scope.** The toolbar's "Box edits apply to" decides how far a dragged or resized
+  box reaches: this frame only, from here to the end of the track (default), from the start of
+  the track to here, or the whole track. The other keyframes keep their own motion and get the
+  same shift and size change; Ctrl+Z restores them.
+- **Phone footage.** A file with a variable frame rate is recognised when opened (the first
+  600 frame timestamps are scanned) and offered a constant-rate working copy: video re-encoded
+  near-lossless, audio copied unchanged, written atomically. The original's path and SHA-256
+  are recorded next to the copy's in the project and the manifest. Batch does the same
+  automatically (`<name>_CFR.mp4` in the output folder).
 - Select a face track and press P (Video menu: "Find this person in every face track") to find
   every other face track of the same person with the bundled SFace identity model. The matches
   are noted in the Redactions panel and can be disabled or deleted in one go, or you can keep
@@ -32,6 +53,11 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
   or untouched (bench/results/REID_ATTACK.md).
 
 ### Changed
+- **Styles are black box or blue box only.** Pixelate and heavy blur are withdrawn: the
+  re-identification bench (bench/results/REID_ATTACK.md) re-identified faces under both at the
+  loose threshold and none under a solid fill. A project that used them opens with those
+  tracks as black boxes and an audit-log entry saying so; the strengths of the retired styles
+  are unchanged for the bench.
 - Inference on the Intel GPU keeps the last four compiled input shapes instead of one; passes
   that alternate shapes every frame no longer recompile (150 ms) on each call.
 

@@ -7,6 +7,8 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-11-02
+
 ### Added
 - **Licence plates in auto-detect.** The open-image-models YOLOv9-t plate detector (MIT; the
   same file OpenScrub and PrivacyCam ship) is bundled and runs with the other detectors. A

@@ -153,6 +153,31 @@ class MultiScaleDetector(Detector):
         return out
 
 
+class Enhanced(Detector):
+    """Hands the inner detector a brightness/contrast-boosted copy of a frame when `mode`
+    says so (vision/enhance.py: auto = dark or flat frames only, always = every frame); boxes
+    come back unchanged, the frame is never modified. Innermost in the face pipeline so
+    scale / tile / edge wrappers keep working on the original."""
+
+    def __init__(self, inner: Detector, mode: str = "auto"):
+        from ..enhance import as_mode
+        self.inner = inner
+        self.mode = as_mode(mode)
+        self.labels = set(inner.labels)
+        self.name = f"enhanced[{self.mode}]({inner.name})"
+
+    def detect(self, frames: Sequence[np.ndarray]) -> list[list[Detection]]:
+        from ..enhance import boost
+        return self.inner.detect([boost(f, self.mode) for f in frames])
+
+    def set_score_threshold(self, thr: float) -> None:
+        if hasattr(self.inner, "set_score_threshold"):
+            self.inner.set_score_threshold(thr)
+
+    def close(self) -> None:
+        self.inner.close()
+
+
 class EnsembleDetector(Detector):
     """Union of several detectors with class-aware NMS/box fusion."""
 

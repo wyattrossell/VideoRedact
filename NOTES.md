@@ -437,6 +437,27 @@ samples/ (720p30 Axon clips), i7-14700T:
   Label Studio 1.23 installed at C:\dev\venv-labelstudio (bench\label.ps1).
   docs/UPGRADE_PLAN.md written; waiting for approval before changing the pipeline.
 
+- 2026-11-02 (pm): Wyatt's verdict on 0.1.19 the same afternoon, built as five commits for
+  0.1.20 (unreleased): (1) **protected zone removed** ("faces can be seen, defeats the purpose";
+  0.1.19 projects open without it, log `protected_zones_dropped`); (2) **blur back** (black /
+  blue / blur, pixelate stays withdrawn, strength unchanged); (3) **redact the entire picture**
+  (Video menu, Ctrl+Shift+R, `full_frame_track`, label "entire picture", fixed box, trim with
+  [ ] = X); (4) **plates round two**: `VehiclePlates` runs the plate model on a crop of every
+  detected vehicle as well (the two bench plates: 7 -> 62 confident hits), a gate-rejected
+  plate may continue a confirmed plate track, plate thr 0.4; vehicle thr 0.2 was tried and
+  rejected (the patrol car's interior counted as a vehicle and the laptop came back), stays
+  0.35; the gate is a dialog option (bench/results/PLATES.md "Round two"); (5) **detector
+  contrast boost** `vision/enhance.py` (percentile stretch + CLAHE), modes off / auto / always,
+  default auto = frames with mean grey < 60 or spread < 30 only, face + plate detectors only,
+  never the output (byte-identical exports asserted). Measured on the daylight bench clips
+  (bench/results/ENHANCE.md): boosting every frame found ~40 real faces and ~90 junk ones
+  (Chevy emblem, Axon overlay), lost 19-28, and made YOLOX drop the in-car laptop screen in
+  half its frames, so YOLOX keeps the original and auto is a no-op on daylight footage
+  (auto boosted 32 of 1 080 bench frames: 8 faces gained, 0 lost). Full bench: BENCH_NOTE. Tests: 132 passed, 3 skipped. Installed copy on this
+  laptop: 0.1.20 local build (not published; `installeruild.ps1 -Bump 0.1.20 -Publish` when
+  Wyatt says so). Lesson: a "never redact" region cannot coexist with "redact every face";
+  the overlay problem needs a different idea (e.g. move the timestamp, not exempt it).
+
 - 2026-11-02: Wyatt answered the seven questions of 2026-10-31: (1) accept the MIT grant on
   the open-image-models plate weights and ship them; (2) never redact the timestamp; (3) P
   is enough, no automatic people gallery; (4) normalise variable frame rate when needed;

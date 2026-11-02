@@ -6,23 +6,26 @@
 
 Face backends: yunet (default, MIT), centerface (MIT), scrfd (eval only), egoblur (eval only, torch).
 Object backend: yolox_tiny / yolox_s (Apache). Plates: "license_plate" in objects adds the
-YOLOv9-t plate detector (MIT) gated by YOLOX vehicle boxes (cfg "plate_vehicle_gate", default
-on; "plate_conf", default 0.5). Open-vocabulary: see openvocab.py (eval only).
+YOLOv9-t plate detector (MIT) on the full frame and on a crop of every YOLOX vehicle box, kept
+only inside a vehicle box (cfg "plate_vehicle_gate", default on; "plate_conf", default 0.4;
+"vehicle_conf", default 0.35; "plate_crops", default on). cfg "enhance" (off | auto | always)
+hands the face and plate detectors a brightness/contrast-boosted copy (vision/enhance.py).
+Open-vocabulary: see openvocab.py (eval only).
 """
 from __future__ import annotations
 
 from typing import Any, Optional
 
 from .base import Detection, Detector, PerFrameDetector, nms_merge
-from .wrappers import EdgeAssist, EnsembleDetector, HeadFallback, MultiScaleDetector, TiledDetector
-from .plates import VehicleGate
+from .wrappers import EdgeAssist, Enhanced, EnsembleDetector, HeadFallback, MultiScaleDetector, TiledDetector
+from .plates import VehicleGate, VehiclePlates
 
 FACE_BACKENDS = ("yunet", "yunet_cv", "centerface", "scrfd", "egoblur")
 
 
 def build_face(backend: str = "yunet", score_thr: float = 0.5, max_side: int = 1280, tiles: bool = False,
                tile: int = 640, multiscale: Optional[list[float]] = None, threads: int = 0,
-               edge_assist: bool = False) -> Detector:
+               edge_assist: bool = False, enhance: str = "off") -> Detector:
     from . import adapters
     if backend == "yunet":
         from .yunet_ort import YuNetORTDetector
@@ -38,6 +41,8 @@ def build_face(backend: str = "yunet", score_thr: float = 0.5, max_side: int = 1
         det = adapters.EgoBlurDetector("face", score_thr=score_thr, max_side=max_side)
     else:
         raise ValueError(f"unknown face backend {backend}")
+    if enhance and enhance != "off":
+        det = Enhanced(det, enhance)   # innermost: every scale / tile / mirrored pass sees the boosted pixels
     raw = det
     if multiscale:
         det = MultiScaleDetector(det, multiscale, extra_every=2)
@@ -53,11 +58,13 @@ def build_face(backend: str = "yunet", score_thr: float = 0.5, max_side: int = 1
 def build(cfg: dict[str, Any]) -> Detector:
     members: list[Detector] = []
     threads = int(cfg.get("threads", 0))
+    from ..enhance import as_mode
+    enhance = as_mode(cfg.get("enhance", "off"))   # off | auto | always; faces and plates only (vision/enhance.py)
     if cfg.get("face", "yunet"):
         members.append(build_face(cfg.get("face", "yunet"), float(cfg.get("face_conf", 0.5)),
                                   int(cfg.get("face_max_side", 1280)), bool(cfg.get("tiles", False)),
                                   int(cfg.get("tile", 640)), cfg.get("multiscale"), threads,
-                                  edge_assist=bool(cfg.get("edge_assist", False))))
+                                  edge_assist=bool(cfg.get("edge_assist", False)), enhance=enhance))
     objects = set(cfg.get("objects") or [])
     person_requested = "person" in objects
     vehicles_requested = "vehicle" in objects
@@ -71,10 +78,13 @@ def build(cfg: dict[str, Any]) -> Detector:
     if objects:
         from . import adapters
         members.append(adapters.YOLOXDetector(cfg.get("object_model", "yolox_tiny"), float(cfg.get("obj_conf", 0.35)),
-                                              labels=objects, threads=threads))
+                                              labels=objects, threads=threads,
+                                              label_conf={"vehicle": float(cfg.get("vehicle_conf", 0.35))} if plate_gate else None))
+    plate_det = None
     if plates:
         from .plates import YoloV9PlateDetector
-        members.append(YoloV9PlateDetector(float(cfg.get("plate_conf", 0.5)), threads=threads))
+        plate_det = YoloV9PlateDetector(float(cfg.get("plate_conf", 0.4)), threads=threads, enhance=enhance)
+        members.append(plate_det)
     # Fine-tuned detector for classes COCO lacks (document / notepad / paper, licence plate): trained
     # with train/finetune_yolox.py on our own footage; used only when the model file is present.
     doc_model = cfg.get("doc_model")
@@ -90,7 +100,8 @@ def build(cfg: dict[str, Any]) -> Detector:
         members.append(GroundingDinoDetector(prompts=cfg["open_vocab"], score_thr=float(cfg.get("ov_conf", 0.3))))
     det: Detector = members[0] if len(members) == 1 else EnsembleDetector(members)
     if plate_gate:
-        det = VehicleGate(det, keep_vehicles=vehicles_requested)
+        det = VehiclePlates(det, plate_det, keep_vehicles=vehicles_requested, keep_ungated=bool(cfg.get("plate_continue", True)),
+                            crops=bool(cfg.get("plate_crops", True)))
     if cfg.get("head_fallback") or float(cfg.get("face_pad", 0)) > 0:
         # emit_person_boxes: None (default) = keep the historical behaviour (whole-body boxes come
         # out even when only faces were asked for); False = only when "person" was requested.
@@ -101,4 +112,4 @@ def build(cfg: dict[str, Any]) -> Detector:
 
 
 __all__ = ["Detection", "Detector", "PerFrameDetector", "nms_merge", "EdgeAssist", "EnsembleDetector", "HeadFallback",
-           "MultiScaleDetector", "TiledDetector", "VehicleGate", "build", "build_face", "FACE_BACKENDS"]
+           "MultiScaleDetector", "TiledDetector", "Enhanced", "VehicleGate", "VehiclePlates", "build", "build_face", "FACE_BACKENDS"]

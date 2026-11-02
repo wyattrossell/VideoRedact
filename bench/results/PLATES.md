@@ -32,6 +32,58 @@ driver's licences and a "SERVICE" sign. The clips (a crash scene and a traffic s
 readable plates, so recall cannot be judged here, but precision on plate-like rectangles is poor
 for both, and the RT-DETR speed rules it out for the sampled-frame pipeline anyway.
 
+## Round two, 2026-11-02 pm: "plates still not working great, or at all at times"
+
+Wyatt's verdict on the 0.1.19 build above. Three causes were visible in the pipeline without
+any new footage:
+
+1. **Scale.** The model sees a 384 px letterbox of the whole frame; a plate on a car across
+   the street is a dozen pixels wide there and is simply not found.
+2. **The gate loses the car before the plate.** Close up (an officer at the bumper) the object
+   detector's vehicle box fades or is cut off while the plate is still fully readable, and the
+   gate then drops a plate it had been confirming for seconds.
+3. **Threshold.** 0.5 was chosen against the junk; behind a gate it costs plates at an angle.
+
+What changed (`vision/detectors/plates.py` `VehiclePlates`, `vision/auto_detect.py`):
+
+* **A crop of every detected vehicle is searched as well** (up to four per frame, largest
+  first, box grown by 8 %, skipped when the vehicle fills more than 60 % of the frame). The
+  plate in the crop is three to five times bigger than in the full-frame pass; the two sets
+  are fused with the usual NMS.
+* **Continuation without a vehicle box.** A plate the gate rejects is passed on marked
+  `plate_ungated`; auto-detect keeps it only when it overlaps (IoU >= 0.3) a plate track the
+  gate already confirmed twice, and it never starts a track.
+* Plate threshold 0.5 -> 0.4 (PrivacyCam's value), plate track rule: 2 hits at a 0.4 average.
+* The vehicle threshold was tried at 0.2 ("a wrong vehicle box costs nothing") and rejected:
+  at 0.2 the patrol car's own interior counts as a vehicle and the in-car laptop, which the gate
+  had removed entirely, came back (28 of 130 hits). It stays at 0.35.
+* The gate is now an option in the Auto-detect dialog ("keep plates only where a vehicle is
+  detected", on by default) for a clip where it is clearly wrong.
+
+Measured with `bench/eval_plates.py --models pipeline=x --stride 15` on the same 1 080 frames
+(the clips contain one real plate and one dealer plate, both on the stopped car; timings were
+taken while other evaluations ran and are not comparable with the table above):
+
+| configuration | hits | of which score >= 0.8 | what the sheet shows |
+|---|---|---|---|
+| 0.1.19 as shipped (thr 0.5, vehicle 0.35, no crops) | 22 | 6 | dealer plate 6 frames, the real plate once, paper on a hood 8, a licence, a badge, shirts |
+| thr 0.5, vehicle 0.2, no crops | 37 | 6 | the same plus the laptop through the low vehicle threshold |
+| thr 0.35, vehicle 0.2, no crops | 57 | 6 | more laptop, keyboard, notepad |
+| thr 0.35, vehicle 0.2, **crops** | 130 | 62 | **the real plate and the dealer plate in every frame they are visible** (62 hits at 0.85-0.92); plus paper, licence, laptop, keyboard, door decal, QR code |
+| thr 0.35, vehicle 0.35, crops | 102 | 62 | the same plates; the laptop gone again; 14 hits between 0.35 and 0.5 are keyboard / decal / notepad |
+| **shipped: thr 0.4, vehicle 0.35, crops** | **96** | **62** | as the row above minus six of the weakest junk hits |
+
+So the crop pass is the change that matters: the two plates in the clips went from 7 confident
+hits to 62 at the same threshold, which is what makes a plate *track* (2+ hits) form and hold.
+Precision is unchanged in kind: what remains is plate-shaped things on vehicles (a sheet of
+paper on a hood, a driver's licence held beside a car, a door decal), deleted with one key.
+Recall on real traffic stops is still Wyatt's test: the bench clips have two plates.
+
+Enhancement (bench/results/ENHANCE.md) was also tried on the plate detector: boosting every
+frame gained 65 plate hits and lost 66, and the gained ones were all the in-car tablet, the
+laptop and a "SERVICE" sign; in the shipped `auto` mode (dark or flat frames only) it is a
+no-op on these daylight clips.
+
 ## Decision of 2026-11-02: ship the open-image-models YOLOv9-t, gated
 
 Wyatt accepted the author's MIT grant (the way OpenScrub and PrivacyCam ship the same file;

@@ -13,9 +13,17 @@ precision policy:
 
   * the post-filters PrivacyCam applies (aspect ratio 1.1-8, tiny and huge boxes dropped,
     at most 20 per frame), and
-  * `VehicleGate`: a plate is kept only when it lies inside a vehicle box (COCO car, truck,
-    bus, motorcycle from the YOLOX detector that runs anyway). A plate held in the hand, or on
-    a vehicle the object detector misses, needs a drawn box; that is the precision trade.
+  * `VehiclePlates`: a plate is kept only when it lies inside a vehicle box (COCO car, truck,
+    bus, motorcycle from the YOLOX detector that runs anyway, taken at a low threshold since a
+    wrong vehicle box costs nothing). A plate held in the hand needs a drawn box.
+
+Round two (2026-11-02, "plates still not working great"): at 384 px a plate on a car across
+the street is a dozen pixels wide and the model misses it. `VehiclePlates` therefore also
+runs the plate model on a crop of every detected vehicle (up to four, largest first), where
+the same plate is three to five times bigger, and fuses those hits with the full-frame pass.
+Plates the gate rejects are passed on marked `plate_ungated`; auto-detect uses them only to
+continue a plate track it has already confirmed (the car drifts out of the object detector's
+view before the plate does) and never to start one.
 
 RTDETRPlateDetector is the 2026-10-29 candidate (Topurrra, Apache-2.0); 850 ms/frame on CPU,
 kept for comparison only and not in the model registry.
@@ -28,7 +36,7 @@ import cv2
 import numpy as np
 
 from videoredact.core.model import BBox
-from .base import Detection, Detector, PerFrameDetector, _contains
+from .base import Detection, Detector, PerFrameDetector, _contains, nms_merge
 
 INPUT = 640              # RT-DETR
 PLATE_INPUT = 384        # YOLOv9-t
@@ -40,6 +48,11 @@ PLATE_MAX_AREA_FRAC = 0.35   # of the model input: a "plate" filling a third of 
 PLATE_MAX_PER_FRAME = 20
 PLATE_DEDUPE_IOU = 0.55
 PLATE_PAD_Y = 0.10       # extra height each side so the plate's frame and bolts are covered (PrivacyCam: 20 % total)
+UNGATED_SOURCE = "plate_ungated"   # a plate outside every vehicle box: continuation only (see auto_detect)
+VEHICLE_PAD = 0.08       # vehicle boxes are grown by this fraction before gating / cropping (plates hang on the bumper edge)
+CROP_MAX_VEHICLES = 4    # vehicle crops searched per frame, largest first
+CROP_MIN_SIDE = 48       # px: smaller vehicle boxes hold no readable plate
+CROP_MAX_AREA = 0.6      # a vehicle filling this much of the frame gains nothing from a crop (same scale as the full pass)
 
 
 def decode_plate_rows(rows: np.ndarray, W: int, H: int, r: float, dx: float, dy: float,
@@ -93,7 +106,7 @@ def letterbox(frame: np.ndarray, size: int) -> tuple[np.ndarray, float, float, f
 class YoloV9PlateDetector(PerFrameDetector):
     labels = {PLATE_LABEL}
 
-    def __init__(self, score_thr: float = 0.5, threads: int = 0, prefer_openvino: bool = False):
+    def __init__(self, score_thr: float = 0.4, threads: int = 0, prefer_openvino: bool = False, enhance: str = "off"):
         from ..runner import make_runner
         from .. import models as reg
         # CPU ONNX Runtime by default: 20 ms/frame, and the end-to-end graph has a dynamic
@@ -101,6 +114,8 @@ class YoloV9PlateDetector(PerFrameDetector):
         self.runner = make_runner(reg.ensure_model("plate_yolov9t"), threads, prefer_openvino=prefer_openvino)
         self.engine = self.runner.engine
         self.score_thr = float(score_thr)
+        from ..enhance import as_mode
+        self.enhance = as_mode(enhance)  # off | auto | always: boosted copy of the frame / vehicle crop (vision/enhance.py)
         self.name = "plate_yolov9t"
 
     def set_score_threshold(self, thr: float) -> None:
@@ -108,6 +123,9 @@ class YoloV9PlateDetector(PerFrameDetector):
 
     def _detect_frame(self, frame: np.ndarray) -> list[Detection]:
         H, W = frame.shape[:2]
+        if self.enhance != "off":
+            from ..enhance import boost
+            frame = boost(frame, self.enhance)
         canvas, r, dx, dy = letterbox(frame, PLATE_INPUT)
         rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
         blob = np.ascontiguousarray((rgb.astype(np.float32) / 255.0).transpose(2, 0, 1)[None])
@@ -117,36 +135,75 @@ class YoloV9PlateDetector(PerFrameDetector):
         return decode_plate_rows(out, W, H, r, dx, dy, self.score_thr, self.name)
 
 
-class VehicleGate(Detector):
-    """Keep `license_plate` detections only where at least `min_inside` of the plate lies
-    inside a `vehicle` detection from the same pass; vehicle boxes themselves are dropped
-    unless `keep_vehicles`. Everything else passes through untouched."""
+def _grow(b: BBox, frac: float) -> BBox:
+    return BBox(b.x - b.w * frac, b.y - b.h * frac, b.w * (1 + 2 * frac), b.h * (1 + 2 * frac)).clamp()
 
-    def __init__(self, inner: Detector, min_inside: float = 0.8, keep_vehicles: bool = False):
+
+class VehiclePlates(Detector):
+    """Plates on vehicles. Wraps the detector that emits `vehicle` boxes (YOLOX) and plates
+    (full-frame pass) and:
+
+      * runs `plate_det` again on a crop of each vehicle box (`CROP_MAX_VEHICLES` largest, grown
+        by `VEHICLE_PAD`), where a distant plate is several times bigger than in the 384 px
+        full-frame pass, and fuses the two sets (`nms_merge`);
+      * keeps a plate only where at least `min_inside` of it lies inside a (grown) vehicle box;
+        the rest are passed on with source `UNGATED_SOURCE` when `keep_ungated` (auto-detect
+        continues an already confirmed plate track with them, never starts one) or dropped;
+      * drops the vehicle boxes themselves unless `keep_vehicles`.
+    Everything else passes through untouched."""
+
+    def __init__(self, inner: Detector, plate_det: Optional[PerFrameDetector] = None, min_inside: float = 0.6,
+                 keep_vehicles: bool = False, keep_ungated: bool = True, crops: bool = True):
         self.inner = inner
+        self.plate_det = plate_det
         self.min_inside = float(min_inside)
         self.keep_vehicles = keep_vehicles
+        self.keep_ungated = keep_ungated
+        self.crops = crops and plate_det is not None
         self.labels = set(inner.labels) - ({VEHICLE_LABEL} if not keep_vehicles else set())
-        self.name = f"vehiclegate({inner.name})"
+        self.name = f"vehicleplates({inner.name})"
+
+    def _crop_plates(self, frame: np.ndarray, vehicles: list[BBox]) -> list[Detection]:
+        H, W = frame.shape[:2]
+        out: list[Detection] = []
+        for v in sorted(vehicles, key=lambda b: -b.w * b.h)[:CROP_MAX_VEHICLES]:
+            if v.w * v.h >= CROP_MAX_AREA:
+                continue
+            x0, y0, x1, y1 = v.to_pixels(W, H)
+            if x1 - x0 < CROP_MIN_SIDE or y1 - y0 < CROP_MIN_SIDE:
+                continue
+            crop = frame[y0:y1, x0:x1]
+            cw, ch = (x1 - x0) / W, (y1 - y0) / H
+            for d in self.plate_det._detect_frame(crop):
+                b = d.bbox
+                out.append(Detection(BBox(x0 / W + b.x * cw, y0 / H + b.y * ch, b.w * cw, b.h * ch).clamp(),
+                                     d.label, d.score, d.source + "+crop", getattr(d, "landmarks", None)))
+        return out
 
     def detect(self, frames: Sequence[np.ndarray]) -> list[list[Detection]]:
         out = []
-        for dets in self.inner.detect(frames):
-            vehicles = [d.bbox for d in dets if d.label == VEHICLE_LABEL]
-            kept = []
-            for d in dets:
-                if d.label == VEHICLE_LABEL:
-                    if self.keep_vehicles:
-                        kept.append(d)
-                    continue
-                if d.label == PLATE_LABEL and not any(_contains(v, d.bbox, self.min_inside) for v in vehicles):
-                    continue
-                kept.append(d)
+        for frame, dets in zip(frames, self.inner.detect(frames)):
+            vehicles = [_grow(d.bbox, VEHICLE_PAD) for d in dets if d.label == VEHICLE_LABEL]
+            plates = [d for d in dets if d.label == PLATE_LABEL]
+            kept = [d for d in dets if d.label == VEHICLE_LABEL and self.keep_vehicles]
+            if self.crops and vehicles:
+                plates = nms_merge(plates + self._crop_plates(frame, vehicles), PLATE_DEDUPE_IOU)
+            for d in plates:
+                if any(_contains(v, d.bbox, self.min_inside) for v in vehicles):
+                    kept.append(d)
+                elif self.keep_ungated:
+                    kept.append(Detection(d.bbox, d.label, d.score, UNGATED_SOURCE, getattr(d, "landmarks", None)))
+            kept += [d for d in dets if d.label not in (VEHICLE_LABEL, PLATE_LABEL)]
             out.append(kept)
         return out
 
     def close(self) -> None:
         self.inner.close()
+
+
+# 0.1.19 name, kept for callers that import it: the gate without the crop pass or continuation.
+def VehicleGate(inner: Detector, min_inside: float = 0.8, keep_vehicles: bool = False) -> VehiclePlates:
+    return VehiclePlates(inner, None, min_inside=min_inside, keep_vehicles=keep_vehicles, keep_ungated=False, crops=False)
 
 
 class RTDETRPlateDetector(PerFrameDetector):

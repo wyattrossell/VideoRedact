@@ -174,31 +174,85 @@ def test_plate_rows_are_filtered_like_privacycam_and_mapped_back():
 
 
 def test_vehicle_gate_keeps_plates_on_vehicles_only():
-    from videoredact.vision.detectors.plates import VehicleGate
+    from videoredact.vision.detectors.plates import UNGATED_SOURCE, VehicleGate, VehiclePlates
     car = (BBox(0.5, 0.4, 0.4, 0.5), "vehicle", 0.8)
     on_car = (BBox(0.6, 0.7, 0.1, 0.04), "license_plate", 0.9)
     laptop = (BBox(0.1, 0.1, 0.2, 0.08), "license_plate", 0.95)    # the in-car screen, nowhere near a vehicle
     face = (BBox(0.1, 0.5, 0.1, 0.15), "face", 0.9)
     inner = Fake([car, on_car, laptop, face])
     inner.labels = {"vehicle", "license_plate", "face"}
-    out = VehicleGate(inner).detect([np.zeros((10, 10, 3), np.uint8)])[0]
+    frame = [np.zeros((10, 10, 3), np.uint8)]
+    out = VehicleGate(inner).detect(frame)[0]
     assert [(d.label, d.score) for d in out] == [("license_plate", 0.9), ("face", 0.9)]
     assert "vehicle" not in VehicleGate(inner).labels
-    kept = VehicleGate(inner, keep_vehicles=True).detect([np.zeros((10, 10, 3), np.uint8)])[0]
+    kept = VehicleGate(inner, keep_vehicles=True).detect(frame)[0]
     assert [d.label for d in kept] == ["vehicle", "license_plate", "face"]
+    # the full wrapper passes the rejected plate on, marked for continuation only
+    out = VehiclePlates(inner, None).detect(frame)[0]
+    assert [(d.label, d.source) for d in out] == [("license_plate", "fake"), ("license_plate", UNGATED_SOURCE), ("face", "fake")]
+
+
+def test_vehicle_crops_find_the_small_plate_and_map_it_back():
+    """The full-frame pass misses a distant plate; the crop of the vehicle box finds it, and
+    its box comes back in frame coordinates, inside the vehicle."""
+    from videoredact.vision.detectors.plates import VehiclePlates
+    from videoredact.vision.detectors.base import PerFrameDetector
+
+    class CropPlate(PerFrameDetector):
+        labels = {"license_plate"}
+        name = "plate_fake"
+        seen = []
+
+        def _detect_frame(self, frame):
+            self.seen.append(frame.shape[:2])
+            # a plate in the lower middle of whatever crop it is handed
+            return [Detection(BBox(0.4, 0.8, 0.2, 0.08), "license_plate", 0.7, self.name)]
+
+    frame = np.zeros((360, 640, 3), np.uint8)
+    car = (BBox(0.5, 0.25, 0.25, 0.5), "vehicle", 0.3)           # 160 x 180 px, taken at the low vehicle threshold
+    inner = Fake([car])
+    inner.labels = {"vehicle", "license_plate"}
+    pd = CropPlate()
+    out = VehiclePlates(inner, pd).detect([frame])[0]
+    assert pd.seen and pd.seen[0][0] < 360 and pd.seen[0][1] < 640      # the detector saw a crop, not the frame
+    assert len(out) == 1 and out[0].label == "license_plate" and out[0].source.endswith("+crop")
+    b = out[0].bbox
+    gx0, gy0 = 0.5 - 0.25 * 0.08, 0.25 - 0.5 * 0.08                       # the grown vehicle box
+    gw, gh = 0.25 * 1.16, 0.5 * 1.16
+    assert abs(b.x - (gx0 + 0.4 * gw)) < 0.01 and abs(b.y - (gy0 + 0.8 * gh)) < 0.01
+    assert abs(b.w - 0.2 * gw) < 0.01 and abs(b.h - 0.08 * gh) < 0.01
+    # without the crop pass the plate is never seen
+    assert VehiclePlates(inner, pd, crops=False).detect([frame])[0] == []
+
+
+def test_ungated_plates_only_continue_confirmed_plate_tracks():
+    from videoredact.vision.auto_detect import _Live, continue_ungated_plates
+    from videoredact.vision.detectors.plates import UNGATED_SOURCE
+    confirmed = _Live("license_plate", 10, BBox(0.5, 0.5, 0.1, 0.05), 0.8)
+    confirmed.hits = 3
+    fresh = _Live("license_plate", 10, BBox(0.1, 0.1, 0.1, 0.05), 0.8)       # one hit only
+    same = Detection(BBox(0.51, 0.5, 0.1, 0.05), "license_plate", 0.6, UNGATED_SOURCE)
+    near_fresh = Detection(BBox(0.11, 0.1, 0.1, 0.05), "license_plate", 0.6, UNGATED_SOURCE)
+    elsewhere = Detection(BBox(0.8, 0.8, 0.1, 0.05), "license_plate", 0.9, UNGATED_SOURCE)
+    gated = Detection(BBox(0.3, 0.3, 0.1, 0.05), "license_plate", 0.6, "plate_yolov9t")
+    out = continue_ungated_plates([same, near_fresh, elsewhere, gated], [confirmed, fresh])
+    assert [d.bbox for d in out] == [same.bbox, gated.bbox]
+    assert out[0].source != UNGATED_SOURCE and "continued" in out[0].source
 
 
 def test_build_with_plates_adds_the_vehicle_gate():
     from videoredact.vision import models as reg
     if not reg.is_available("plate_yolov9t") or not reg.is_available("yolox_tiny"):
         pytest.skip("plate / object models not installed")
-    from videoredact.vision.detectors import build, VehicleGate, EnsembleDetector
+    from videoredact.vision.detectors import build, VehiclePlates, EnsembleDetector
     det = build({"face": "", "objects": ["license_plate"], "face_pad": 0})
-    assert isinstance(det, VehicleGate) and isinstance(det.inner, EnsembleDetector)
+    assert isinstance(det, VehiclePlates) and isinstance(det.inner, EnsembleDetector)
     names = sorted(m.name for m in det.inner.members)
     assert names == ["plate_yolov9t", "yolox_tiny"]
     yolox = next(m for m in det.inner.members if m.name == "yolox_tiny")
-    assert yolox.labels == {"vehicle"}
+    assert yolox.labels == {"vehicle"} and yolox.label_conf == {"vehicle": 0.35}
+    assert det.plate_det is det.inner.members[names.index("plate_yolov9t") if False else [m.name for m in det.inner.members].index("plate_yolov9t")]
+    assert det.crops and det.keep_ungated
     assert "vehicle" not in det.labels and "license_plate" in det.labels
-    # the gate can be switched off (bench comparisons)
-    assert not isinstance(build({"face": "", "objects": ["license_plate"], "plate_vehicle_gate": False, "face_pad": 0}), VehicleGate)
+    # the gate can be switched off (bench comparisons, dialog option)
+    assert not isinstance(build({"face": "", "objects": ["license_plate"], "plate_vehicle_gate": False, "face_pad": 0}), VehiclePlates)

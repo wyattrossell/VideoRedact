@@ -38,7 +38,7 @@ COCO_TO_LABEL = {
 AUTO_LABELS = ["face", "license_plate", "screen", "document", "phone", "person"]
 LABEL_DESCRIPTIONS = {
     "face": "Faces (YuNet)",
-    "license_plate": "Licence plates on vehicles (YOLOv9-t; kept only where a car, truck, bus or motorcycle is detected)",
+    "license_plate": "Licence plates (YOLOv9-t on the whole picture and on every detected vehicle)",
     "screen": "Computer / TV screens and laptops",
     "document": "Papers, notepads, books",
     "phone": "Cell phones",
@@ -183,10 +183,14 @@ class ObjectDetector:
     """YOLOX ONNX inference (yolox_s @640 or yolox_tiny @416)."""
 
     def __init__(self, model: str = "yolox_s", conf_thr: float = 0.35, nms_thr: float = 0.45,
-                 labels: Optional[set[str]] = None, threads: int = 0, class_names: Optional[list[str]] = None):
+                 labels: Optional[set[str]] = None, threads: int = 0, class_names: Optional[list[str]] = None,
+                 label_conf: Optional[dict[str, float]] = None):
         # class_names: label per output class id for fine-tuned models (train/README.md);
         # None -> COCO mapping in COCO_TO_LABEL
+        # label_conf: per-label score cut overriding conf_thr (vehicles that only gate the plate
+        # detector can be taken at 0.2: a wrong vehicle box costs nothing, a missed one loses a plate)
         self.class_names = class_names
+        self.label_conf = dict(label_conf or {})
         path = model_registry.ensure_model(model)
         # Engine from vision/runner.py: OpenVINO on an Intel GPU when available, else ONNX
         # Runtime (CUDA/TensorRT pack or CPU). Thread budget + no spin-waiting on CPU.
@@ -235,7 +239,8 @@ class ObjectDetector:
         scores_all = obj * cls
         cls_id = scores_all.argmax(1)
         scores = scores_all[np.arange(len(cls_id)), cls_id]
-        keep = scores > self.conf_thr
+        floor = min([self.conf_thr] + list(self.label_conf.values())) if self.label_conf else self.conf_thr
+        keep = scores > floor
         if not keep.any():
             return []
         xy, wh, scores, cls_id = xy[keep], wh[keep], scores[keep], cls_id[keep]
@@ -247,7 +252,9 @@ class ObjectDetector:
             label = self.class_names[int(c)] if self.class_names and int(c) < len(self.class_names) else COCO_TO_LABEL.get(int(c))
             if label is None or (self.labels is not None and label not in self.labels):
                 continue
-            m = cls_id == c
+            m = (cls_id == c) & (scores > self.label_conf.get(label, self.conf_thr))
+            if not m.any():
+                continue
             for i in _nms(boxes[m], scores[m], self.nms_thr):
                 x0, y0, x1, y1 = boxes[m][i]
                 dets.append(Detection(BBox.from_pixels(x0, y0, x1, y1, W, H), label, float(scores[m][i])))

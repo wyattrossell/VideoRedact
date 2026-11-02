@@ -57,10 +57,18 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
 5. **Auto-detect** (Video → Auto-detect faces/plates/screens/documents). The default keeps only
    confident detections (a face must be seen 3+ times at 70 %+ confidence, no whole-body boxes);
    expect far fewer false hits than before, and tell us about any real face it now misses.
-   **Licence plates** (0.1.19) are found by a plate model but kept only where they sit on a
-   detected vehicle (car, truck, bus, motorcycle). On our clips the leftovers are plate-shaped
-   things on cars: a dealer plate frame, a sheet of paper on a hood. Tell us about plates it
-   misses on traffic stops, and about anything it covers that is not a plate.
+   **Licence plates** are found by a plate model on the whole picture and again on a
+   close-up of every detected vehicle, and kept only where they sit on a vehicle (car, truck,
+   bus, motorcycle; an option in the dialog if a clip proves it wrong). On our clips the
+   leftovers are plate-shaped things on cars: a dealer plate frame, a sheet of paper on a hood.
+   Tell us about plates it misses on traffic stops (with the time in the clip, and whether the
+   car is close, far, or at night), and about anything it covers that is not a plate.
+   **Brightness / contrast boost**: the dialog's "Boost brightness / contrast for the detectors"
+   defaults to dark or washed-out frames only. Only the face and plate detectors see the boosted
+   copy; the picture, the preview and the export never change. On our daylight clips boosting
+   every frame found as many extra false faces (a steering-wheel emblem, the camera's timestamp)
+   as real ones, so try "Every frame" only on a clip that is dark throughout and tell us whether
+   it found faces or plates that the default missed.
    Review the list in the right-hand panel with the keys: N / Shift+N next/previous, Delete
    (Ctrl+Z undoes), E disable, X split at the playhead, [ ] trim, = extend.
    The dialog has an off-by-default option for faces cut off by the edge of the picture (people

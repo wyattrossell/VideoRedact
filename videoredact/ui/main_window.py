@@ -23,6 +23,7 @@ from videoredact.core.media import (MEDIA_FILTER, FrameReader, decode_audio, nea
 from videoredact.core.model import (AudioRedaction, AudioStyle, BBox, Project, Shape, Span, VideoStyle, VideoTrack,
                                     Word, as_enum, full_frame_track)
 from videoredact.paths import settings
+from videoredact.vision.enhance import as_mode
 from .dialogs import AutoDetectDialog, BatchDialog, ExportDialog, FullFrameDialog, NewBoxDialog, SettingsDialog
 from .panels import AUDIO_STYLE_NAMES, VIDEO_STYLE_NAMES, PIIDialog, RedactionPanel
 from .player import MediaPlayer
@@ -959,7 +960,8 @@ class MainWindow(QMainWindow):
                             backward=bool(settings.get("track_backward", True) if backward is None else backward),
                             end_frame=end_frame, tracker=settings.get("tracker", "vit"),
                             lost_limit_s=float(settings.get("track_lost_limit_s", 8.0) if lost_limit_s is None else lost_limit_s),
-                            search_to_end=bool(settings.get("track_search_to_end", False) if search_to_end is None else search_to_end))
+                            search_to_end=bool(settings.get("track_search_to_end", False) if search_to_end is None else search_to_end),
+                            enhance=as_mode(settings.get("detect_enhance", "auto")))
         joined = proj.get_track(join_id) if join_id else None
         if joined is not None:
             self._push_undo(copy.deepcopy(joined), kind="replaced")
@@ -1196,6 +1198,10 @@ class MainWindow(QMainWindow):
         settings["detect_multiscale"] = opts.multiscale
         opts.edge_assist = dlg.edge.isChecked()
         settings["detect_edge_assist"] = opts.edge_assist
+        opts.enhance = str(dlg.enhance.currentData())
+        settings["detect_enhance"] = opts.enhance
+        opts.plate_vehicle_gate = dlg.plate_gate.isChecked()
+        settings["plate_vehicle_gate"] = opts.plate_vehicle_gate
         opts.head_fallback = dlg.head.isChecked()
         opts.face_pad = float(settings.get("face_pad", 0.25))
         opts.assoc = settings.get("assoc", "botsort")
@@ -1220,7 +1226,8 @@ class MainWindow(QMainWindow):
             for t in tracks:
                 t.pad = settings["video_pad"]
                 self.project.add_video_track(t)
-            self.project.log("auto_detect", f"{len(tracks)} regions, labels={labels}, stride={opts.stride}")
+            self.project.log("auto_detect", f"{len(tracks)} regions, labels={labels}, stride={opts.stride}, "
+                                            f"detector contrast boost={opts.enhance}, plates on vehicles only={opts.plate_vehicle_gate}")
             self._project_changed()
             self.tabs.setCurrentWidget(self.panel)
             QMessageBox.information(self, "Detection complete",
@@ -1370,7 +1377,9 @@ class MainWindow(QMainWindow):
                                                face_pad=float(settings.get("face_pad", 0.25)),
                                                assoc=settings.get("assoc", "botsort"),
                                                lead_in=int(settings.get("lead_frames", 15)),
-                                               lead_out=int(settings.get("lead_frames", 15))),
+                                               lead_out=int(settings.get("lead_frames", 15)),
+                                               enhance=as_mode(settings.get("detect_enhance", "auto")),
+                                               plate_vehicle_gate=bool(settings.get("plate_vehicle_gate", True))),
                             normalize_vfr=bool(settings.get("vfr_normalize", True)))
 
         def job(prog, cancel, partial):

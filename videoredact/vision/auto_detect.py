@@ -36,6 +36,7 @@ from videoredact.core.media import FrameReader
 from videoredact.core.model import BBox, Shape, Span, VideoTrack
 from .detector import CombinedDetector
 from .detectors.base import Detection
+from .detectors.plates import PLATE_LABEL, UNGATED_SOURCE
 
 ProgressCB = Callable[[float, str], None]
 CancelCB = Callable[[], bool]
@@ -92,19 +93,23 @@ class AutoDetectOptions:
     emit_person_boxes: bool = False  # whole-body boxes from the head-fallback person detector; False = only when "person" is a label
     doc_model: str = "yolox_tiny_doc"  # fine-tuned document/plate detector (train/); ignored when the file is absent
     doc_conf: float = 0.35
-    plate_conf: float = 0.5    # YOLOv9-t plate score cut (PrivacyCam ships 0.4; our false hits score up to 0.84, so the gate below matters more)
-    plate_vehicle_gate: bool = True  # keep a plate only inside a YOLOX vehicle box (detectors/plates.py VehicleGate)
+    plate_conf: float = 0.4    # YOLOv9-t plate score cut (PrivacyCam's value); real plates score 0.85+ on the vehicle crops
+    plate_vehicle_gate: bool = True  # keep a plate only inside a YOLOX vehicle box (detectors/plates.py VehiclePlates)
+    plate_crops: bool = True   # also search a crop of every detected vehicle at full resolution (distant plates: 6 -> 62 confident hits on the bench)
+    vehicle_conf: float = 0.35  # YOLOX score cut for the vehicle boxes that gate plates (0.2 let the patrol car's interior count as a vehicle and the laptop back in)
+    plate_min_track_conf: float = 0.4   # average plate score a plate track needs (the gate, not the score, is the filter)
     face_pad: float = 0.25     # dilation of face/head boxes (fraction of box size)
     face_shape: str = "ellipse"
     detector_cfg: Optional[dict] = None   # override for detectors.build()
     proxy_width: int = 1280    # decode a proxy this wide for detection when the source is larger (boxes are normalized)
+    enhance: str = "auto"      # off | auto | always: the face and plate detectors see a brightness/contrast-boosted copy of dark/flat (auto) or every frame (vision/enhance.py); the picture itself never changes
     scene_cut: bool = True     # detect every frame right after a hard cut and reset carriers/tracker state
     adaptive: bool = True      # skip detection on frames nearly identical to the last detected one (static camera)
     max_stride: int = 15       # cap for adaptive skipping (frames)
 
     # The pre-0.1.15 "find everything, the reviewer deletes" behaviour, kept as an option
     # (Auto-detect dialog, bench --detect-opt). Not a dataclass field.
-    RECALL = dict(min_hits=1, min_track_conf=0.0, obj_min_hits=1, obj_min_track_conf=0.0,
+    RECALL = dict(min_hits=1, min_track_conf=0.0, obj_min_hits=1, obj_min_track_conf=0.0, plate_min_track_conf=0.0,
                   max_face_frac=1.0, head_fallback=True, emit_person_boxes=True)
 
     @classmethod
@@ -131,6 +136,8 @@ def confirm_track(label: str, hits: int, mean_conf: float, box_h: float, opts: A
         if box_h > opts.max_face_frac:
             return False
         return hits >= opts.min_hits and mean_conf >= opts.min_track_conf
+    if label == "license_plate":
+        return hits >= opts.obj_min_hits and mean_conf >= opts.plate_min_track_conf
     return hits >= opts.obj_min_hits and mean_conf >= opts.obj_min_track_conf
 
 
@@ -155,6 +162,9 @@ def build_detector(opts: "AutoDetectOptions"):
     cfg.setdefault("doc_conf", opts.doc_conf)
     cfg.setdefault("plate_conf", opts.plate_conf)
     cfg.setdefault("plate_vehicle_gate", opts.plate_vehicle_gate)
+    cfg.setdefault("plate_crops", opts.plate_crops)
+    cfg.setdefault("vehicle_conf", opts.vehicle_conf)
+    cfg.setdefault("enhance", opts.enhance)
     cfg.setdefault("doc_labels", [l for l in opts.labels if l in ("document", "plate", "license_plate")])
     cfg.setdefault("threads", opts.threads)
     return build(cfg)
@@ -252,6 +262,26 @@ def _run_detector(det, frame):
     return det.detect_one(frame) if hasattr(det, "detect_one") else det.detect(frame)
 
 
+PLATE_CONTINUE_IOU = 0.3
+PLATE_CONTINUE_HITS = 2
+
+
+def continue_ungated_plates(dets: list, live: list, iou_thr: float = PLATE_CONTINUE_IOU,
+                            min_hits: int = PLATE_CONTINUE_HITS) -> list:
+    """A plate the vehicle gate rejected (detectors/plates.py UNGATED_SOURCE) is kept only when
+    it overlaps a live plate track that the gate already confirmed `min_hits` times: the car
+    drifts out of the object detector's view (close-up, half out of frame) before its plate
+    does. Such a plate never starts a track."""
+    out = []
+    for d in dets:
+        if getattr(d, "source", "") == UNGATED_SOURCE:
+            if not any(L.label == PLATE_LABEL and L.hits >= min_hits and L.last_box.iou(d.bbox) >= iou_thr for L in live):
+                continue
+            d = Detection(d.bbox, d.label, d.score, "plate_yolov9t (continued without a vehicle box)")
+        out.append(d)
+    return out
+
+
 def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
                   start: int, end: int, progress: Optional[ProgressCB], cancel: Optional[CancelCB],
                   prog_base: float = 0.0, prog_span: float = 1.0) -> list[VideoTrack]:
@@ -342,7 +372,7 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
                 next_det = idx + cur_stride
             # full-resolution (or proxy) frame: the face detector downsizes to <=1280 itself (small
             # faces need the pixels; a 960 px copy lost ~7 % of faces), YOLOX resizes to 416 anyway
-            dets = _run_detector(det, frame)
+            dets = continue_ungated_plates(_run_detector(det, frame), live)
             if mot is not None:
                 # BoT-SORT gives identities (Kalman prediction + camera-motion compensation);
                 # the *raw detection box* is what gets redacted (the tracker's smoothed box can lag),

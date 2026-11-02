@@ -14,6 +14,21 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
   audio is untouched. Adjust the range with the usual trim / extend / split keys.
 
 ### Changed
+- **Licence plates, round two.** The plate model now also searches a full-resolution crop of
+  every detected vehicle, where a distant plate is several times bigger: on the bench clips the
+  two visible plates went from 7 confident hits to 62 (bench/results/PLATES.md). A plate the
+  vehicle gate rejects can continue a plate track the gate already confirmed (the car fades
+  out of the object detector's view before its plate does) but never starts one. Plate
+  threshold 0.5 -> 0.4. The gate ("keep plates only where a vehicle is detected") is now an
+  option in the Auto-detect dialog, on by default.
+- **Brightness / contrast boost for the detectors** (Auto-detect dialog; also used by a drawn
+  box's tracking). Dark or washed-out frames are stretched and locally equalised before the
+  face and plate detectors see them; the picture, the preview and the export never change
+  and the manifest records the setting. Default: dark or washed-out frames only. Measured on
+  our daylight clips, boosting every frame found as many extra false faces (a steering-wheel
+  emblem, the camera's timestamp overlay) as real ones and made the object detector lose the
+  in-car laptop screen, so screens / phones / documents keep the original pixels and the
+  "every frame" setting is for footage that is dark throughout (bench/results/ENHANCE.md).
 - **The heavy blur is back** as a video style (black box, blue box or blur; pixelate stays
   withdrawn). Its strength is unchanged; the re-identification figures in
   docs/CJIS_COMPLIANCE.md section 9 stay on record so the choice is informed.

@@ -18,8 +18,12 @@ ordinary Windows PC (no GPU required). MIT licensed.
   several CPU cores in parallel.
 - Phone footage with a variable frame rate is offered a constant-rate working copy
   when opened (audio copied unchanged; the original's hash stays on record).
-- Licence plates (open-image-models YOLOv9-t, MIT) are detected and kept only where
-  they sit on a detected vehicle.
+- Licence plates (open-image-models YOLOv9-t, MIT) are detected on the whole picture
+  and again on a full-resolution crop of every detected vehicle, and kept only where
+  they sit on a vehicle (an option; see bench/results/PLATES.md).
+- Dark or washed-out frames are brightness/contrast-boosted for the face and plate
+  detectors only (off / dark frames only / every frame); the picture you see and the
+  export are always the original pixels (bench/results/ENHANCE.md).
 - Redact the entire picture over a time range (Video menu) for footage recorded where
   everything in view must be withheld.
 - Draw a box around anything and the object is tracked forward and backward

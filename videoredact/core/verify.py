@@ -62,12 +62,16 @@ def _coverage(det: BBox, boxes: list[BBox]) -> float:
 def verify_output(output_path: str, project: Project, labels: Optional[list[str]] = None,
                   stride: int = 15, min_cover: float = 0.6, face_conf: float = 0.5,
                   progress: Optional[ProgressCB] = None, cancel: Optional[CancelCB] = None,
-                  frame_offset: int = 0) -> VerifyResult:
+                  frame_offset: int = 0, enhance: str = "off") -> VerifyResult:
     """Scan the exported file every `stride` frames. A detection counts as
     uncovered when less than `min_cover` of it lies inside enabled redaction
     boxes for that frame (padding included). Detectors run on the redacted
-    output, so anything they still find is by definition visible."""
+    output, so anything they still find is by definition visible. `enhance`
+    shows the detector the brightness/contrast-boosted copy auto-detect's face
+    detector used (vision/enhance.py); off by default because the boosted pass
+    also reports amplified texture (a steering-wheel emblem) as a face."""
     from videoredact.vision.detector import CombinedDetector
+    from videoredact.vision.enhance import boost
     labels = labels or ["face"]
     det = CombinedDetector(labels, face_conf=face_conf)
     tracks = [t for t in project.video_tracks if t.enabled]
@@ -88,7 +92,7 @@ def verify_output(output_path: str, project: Project, labels: Optional[list[str]
                 break
             if idx % stride == 0:
                 checked += 1
-                dets = det.detect(frame)
+                dets = det.detect(boost(frame, enhance))
                 if dets:
                     red = []
                     for t, bb in boxes_at(tracks, idx + frame_offset):

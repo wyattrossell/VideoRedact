@@ -75,6 +75,7 @@ class TrackOptions:
     # covering 13 of 22 s before this; see bench/results/PRECISION_PROFILE.md).
     hold_frames: int = 12           # frames the last box persists after a loss, both directions
     bridge_gap_s: float = 2.0       # gaps up to this long between nearby spans are interpolated over
+    enhance: str = "auto"           # off | auto | always: the class detector sees a brightness/contrast-boosted copy (vision/enhance.py); the tracker and the picture do not
 
 
 _VIT_PATH: Optional[str] = None
@@ -239,6 +240,14 @@ class ObjectTracker:
         self._set_work_side(max(MIN_WORK_SIDE, min(self.o.work_side, side)))
 
     # ---- helpers ---------------------------------------------------------
+    def _det_frame(self, frame: np.ndarray, label: Optional[str] = None) -> np.ndarray:
+        """What the class detector is shown: the boosted copy when the option is on and the
+        class is one that benefits (vision/enhance.py ENHANCED_LABELS)."""
+        from .enhance import ENHANCED_LABELS, boost
+        if label in ENHANCED_LABELS:
+            return boost(frame, self.o.enhance)
+        return frame
+
     def _work(self, frame: np.ndarray) -> np.ndarray:
         if self.scale < 1.0:
             return cv2.resize(frame, (self.wW, self.wH), interpolation=cv2.INTER_LINEAR)
@@ -257,7 +266,7 @@ class ObjectTracker:
             return None
         cur = self._to_norm(box)
         best, best_iou = None, min_iou
-        for d in self.detector.detect(work):
+        for d in self.detector.detect(self._det_frame(work, app.label)):
             if d.label != app.label:
                 continue
             iou = cur.iou(d.bbox)
@@ -284,7 +293,7 @@ class ObjectTracker:
     def _search(self, work: np.ndarray, app: Appearance, use_detector: bool, use_template: bool):
         if use_detector and self.detector and app.label:
             cands = []
-            for d in self.detector.detect(work):
+            for d in self.detector.detect(self._det_frame(work, app.label)):
                 if d.label != app.label:
                     continue
                 b = self._from_norm(d.bbox)

@@ -14,10 +14,12 @@ bench/results/PLATES.md):
            in letterboxed pixels. Raw model, no filters.
   pipeline the shipped pipeline (`detectors.build` with objects=["license_plate"]): the same
            model behind PrivacyCam's shape filters and the vehicle gate (plates kept only inside
-           a YOLOX vehicle box). The path after "=" is ignored. `--nogate` switches the gate off.
+           a YOLOX vehicle box), plus (since the 2026-11-02 rework) a second pass on a crop of
+           each vehicle. The path after "=" is ignored. `--nogate` switches the gate off,
+           `--nocrops` the crop pass; plates marked for continuation only are not counted.
 
 Usage: python bench/eval_plates.py --models rtdetr=path/to/plate_rtdetr.onnx yolov9t=path/to/yolo-v9-t-384.onnx pipeline=x
-          [--clips bench/clips] [--stride 15] [--out bench/results/plates] [--nogate]
+          [--clips bench/clips] [--stride 15] [--out bench/results/plates] [--nogate] [--nocrops] [--thr 0.4] [--vehicle-conf 0.35]
 """
 from __future__ import annotations
 
@@ -100,17 +102,18 @@ class YoloV9Plate:
 class PipelinePlates:
     """The shipped detector pipeline for plates (vision/detectors/__init__.py build)."""
 
-    def __init__(self, thr: float = 0.5, gate: bool = True, threads: int = 0):
+    def __init__(self, thr: float = 0.4, gate: bool = True, crops: bool = True, threads: int = 0, vehicle_conf: float = 0.35):
         from videoredact.vision.detectors import build
         self.det = build({"face": "", "objects": ["license_plate"], "plate_conf": thr, "plate_vehicle_gate": gate,
-                          "face_pad": 0, "threads": threads})
-        self.name = "pipeline" if gate else "pipeline_nogate"
+                          "plate_crops": crops, "vehicle_conf": vehicle_conf, "face_pad": 0, "threads": threads})
+        self.name = "pipeline" + ("" if gate else "_nogate") + ("" if crops else "_nocrops")
 
     def detect(self, frame: np.ndarray):
+        from videoredact.vision.detectors.plates import UNGATED_SOURCE
         H, W = frame.shape[:2]
         dets = []
         for d in self.det.detect_one(frame):
-            if d.label != "license_plate":
+            if d.label != "license_plate" or d.source == UNGATED_SOURCE:
                 continue
             x0, y0, x1, y1 = d.bbox.to_pixels(W, H)
             dets.append((x0, y0, x1 - x0, y1 - y0, float(d.score)))
@@ -125,6 +128,8 @@ def main():
     ap.add_argument("--out", default="bench/results/plates")
     ap.add_argument("--thr", type=float, default=0.0, help="override the detector's default threshold")
     ap.add_argument("--nogate", action="store_true", help="pipeline without the vehicle gate")
+    ap.add_argument("--nocrops", action="store_true", help="pipeline without the per-vehicle crop pass")
+    ap.add_argument("--vehicle-conf", type=float, default=0.35, help="YOLOX score cut for the vehicle boxes that gate plates")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     dets = {}
@@ -135,7 +140,7 @@ def main():
         elif name == "yolov9t":
             dets[name] = YoloV9Plate(path, a.thr or 0.3)
         elif name == "pipeline":
-            dets[name] = PipelinePlates(a.thr or 0.5, gate=not a.nogate)
+            dets[name] = PipelinePlates(a.thr or 0.4, gate=not a.nogate, crops=not a.nocrops, vehicle_conf=a.vehicle_conf)
         else:
             raise SystemExit(f"unknown model {name}")
     results = {n: dict(frames=0, dets=0, ms=0.0, crops=[]) for n in dets}
@@ -173,6 +178,7 @@ def main():
             cv2.imwrite(os.path.join(a.out, f"{name}_sheet.jpg"), np.vstack(rows))
         summary[name] = dict(frames=r["frames"], detections=r["dets"], ms_per_frame=round(r["ms"] / max(1, r["frames"]), 1),
                              dets_per_frame=round(r["dets"] / max(1, r["frames"]), 3),
+                             at_or_above={str(t): sum(1 for c in r["crops"] if c[0] >= t) for t in (0.35, 0.4, 0.5, 0.6, 0.7, 0.8)},
                              by_clip=sorted({c[2] for c in r["crops"]}))
         print(f"{name}: {r['frames']} frames, {r['dets']} detections, {summary[name]['ms_per_frame']} ms/frame")
     with open(os.path.join(a.out, "summary.json"), "w", newline="\n") as fh:

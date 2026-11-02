@@ -124,8 +124,8 @@ def settings_snapshot() -> dict[str, Any]:
     keys = ["whisper_model", "language", "vad", "default_audio_style", "default_video_style", "beep_frequency",
             "audio_pad_s", "detect_stride", "detect_conf", "face_conf", "detect_classes", "video_pad", "face_pad",
             "detector_model", "face_detector", "tracker", "track_step", "assoc", "lead_frames", "detect_carry",
-            "detect_tiles", "detect_multiscale", "detect_head", "export_crf", "export_preset", "verify_export",
-            "offline", "check_updates"]
+            "detect_tiles", "detect_multiscale", "detect_head", "detect_enhance", "plate_vehicle_gate", "export_crf",
+            "export_preset", "verify_export", "offline", "check_updates"]
     return {k: settings.get(k) for k in keys if k in settings}
 
 

@@ -30,6 +30,7 @@ import numpy as np
 
 from videoredact.core.model import BBox, Span, VideoTrack
 from .detectors.base import Detection
+from .enhance import ENHANCED_LABELS
 from .tracker import (CancelCB, ObjectTracker, ProgressCB, UPDATE_EVERY, UpdateCB, _clip_box, _hist,
                       bridge_spans, make_tracker, release_tracker, tracker_score)
 
@@ -103,15 +104,20 @@ def _roi(W: int, H: int, box: PxBox, factor: float = ROI_FACTOR, min_side: int =
 
 
 def _detect_in(det, frame: np.ndarray, region: tuple[int, int, int, int], label: str,
-               expect: float = 0.0) -> list[tuple[PxBox, Detection]]:
+               expect: float = 0.0, enhance: str = "off") -> list[tuple[PxBox, Detection]]:
     """Run the class detector on a region; boxes (pixels) and detections come back in frame
     coordinates. `expect` is the object's expected side in pixels: small objects are upscaled
-    before detection (YuNet misses the faces auto-detect only finds on its 1.5x pass)."""
+    before detection (YuNet misses the faces auto-detect only finds on its 1.5x pass). With
+    `enhance` the detector sees a brightness/contrast-boosted copy of the region
+    (vision/enhance.py); the frame itself is untouched."""
     H, W = frame.shape[:2]
     x0, y0, x1, y1 = region
     crop = frame[y0:y1, x0:x1]
     if crop.shape[0] < 16 or crop.shape[1] < 16:
         return []
+    if enhance and enhance != "off" and label in ENHANCED_LABELS:
+        from .enhance import boost
+        crop = boost(crop, enhance)
     up = 1.0
     if expect > 0 and expect < UPSCALE_BELOW:
         up = min(UPSCALE_MAX, UPSCALE_BELOW / expect)
@@ -277,7 +283,7 @@ class AnchoredTracker(ObjectTracker):
         one box side of it (ViT boxes drift and shrink; a detector box that is close is the object)."""
         H, W = frame.shape[:2]
         best, best_v = None, 0.0
-        for nb, d in _detect_in(self.det, frame, _roi(W, H, b), self.label, expect=_side(b)):
+        for nb, d in _detect_in(self.det, frame, _roi(W, H, b), self.label, expect=_side(b), enhance=self.o.enhance):
             v = _iou(nb, b)
             if v < 0.2:
                 (ax, ay), (bx, by) = _center(b), _center(nb)
@@ -512,7 +518,7 @@ class AnchoredTracker(ObjectTracker):
             rejected: list = []
             if self.det is not None and k % o.lost_detect_every == 0:
                 best_v = 0.0
-                for nb, d in _detect_in(self.det, frame, region, self.label, expect=_side(ref_box)):
+                for nb, d in _detect_in(self.det, frame, region, self.label, expect=_side(ref_box), enhance=o.enhance):
                     if not plausible(ref_box, nb, gap, vel, late):
                         rejected.append((nb, "implausible"))
                         continue

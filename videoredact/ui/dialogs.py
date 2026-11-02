@@ -215,12 +215,11 @@ class AutoDetectDialog(QDialog):
             cb.setChecked(lbl in settings["detect_classes"])
             self.checks[lbl] = cb
             lay.addWidget(cb)
-        note = QLabel("Licence plates are kept only where they sit on a detected vehicle (car, truck, bus, motorcycle): "
-                      "on our footage the plate model also fires on laptop screens, shirts and notepads. A plate held "
-                      "in the hand, or on a vehicle the detector misses, needs a drawn box.")
-        note.setWordWrap(True)
-        note.setStyleSheet("color: gray")
-        lay.addWidget(note)
+        self.plate_gate = QCheckBox("Keep licence plates only where a vehicle is detected (recommended). Each detected "
+                                    "vehicle is also searched at full resolution for its plate. Off: plates anywhere, "
+                                    "which on our footage also covers laptop screens, shirts and notepads.")
+        self.plate_gate.setChecked(bool(settings.get("plate_vehicle_gate", True)))
+        lay.addWidget(self.plate_gate)
         f = QFormLayout()
         self.stride = QSpinBox()
         self.stride.setRange(1, 30)
@@ -245,6 +244,17 @@ class AutoDetectDialog(QDialog):
         self.edge = QCheckBox("Faces cut off by the edge of the picture: mirror the border before detecting (~1.3x face cost)")
         self.edge.setChecked(bool(settings.get("detect_edge_assist", False)))
         f.addRow("", self.edge)
+        self.enhance = QComboBox()
+        self.enhance.addItem("Dark or washed-out frames only (recommended)", "auto")
+        self.enhance.addItem("Every frame (for a clip that is dark throughout)", "always")
+        self.enhance.addItem("Off", "off")
+        self.enhance.setToolTip("Only the face and plate detectors see the boosted copy: the picture, the preview and the "
+                                "export are never changed. Boosting every frame of daylight footage adds false faces "
+                                "(textured emblems, the camera's timestamp), so the default boosts only frames that need it.")
+        from videoredact.vision.enhance import as_mode
+        cur = as_mode(settings.get("detect_enhance", "auto"))
+        self.enhance.setCurrentIndex({"auto": 0, "always": 1, "off": 2}[cur])
+        f.addRow("Boost brightness / contrast for the detectors", self.enhance)
         import os as _os
         self.workers_lbl = QLabel(f"Runs on {max(1, min(4, (_os.cpu_count() or 4) // 2))} CPU workers in parallel.")
         self.workers_lbl.setStyleSheet("color: gray")

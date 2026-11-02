@@ -133,6 +133,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "last_box_shape": None,         # None = ellipse for faces, rectangle otherwise
     "last_box_style": None,         # None = project default
     "edit_scope": "onward",         # dragging a box corrects: frame | onward | back | track (VideoTrack.apply_edit)
+    "detect_enhance": "auto",       # off | auto | always: face/plate detectors see a brightness/contrast-boosted copy of dark/flat frames (vision/enhance.py); never the output
+    "plate_vehicle_gate": True,     # licence plates kept only inside a detected vehicle box (detectors/plates.py)
     "vfr_normalize": True,          # offer a constant-frame-rate working copy when a file (phone footage) is variable-rate
 }
 

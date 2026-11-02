@@ -130,6 +130,12 @@ timestamp and Windows user, from the moment the file was opened).
 * **Verification pass:** after export the program can re-run the face detector on the
   *output* and report any face it still finds that is not covered (`_verification.csv`,
   summarised in the manifest and PDF). Enabled by the "Verify export" option.
+* **Detector-side brightness/contrast boost:** the face and plate detectors may be shown a
+  copy of a frame with its luminance stretched and locally equalised (by default only frames
+  that are dark or washed out; `detect_enhance` in the manifest's settings: off / auto /
+  always). It is input to the detectors only. The frame the reviewer sees, the preview and the
+  exported file are always built from the original pixels, and two exports of the same project
+  with the setting on and off are byte-identical (`tests/test_enhance.py`).
 
 ## 6. How to verify on an installed machine
 

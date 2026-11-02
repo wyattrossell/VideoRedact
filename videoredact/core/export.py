@@ -43,6 +43,7 @@ class ExportOptions:
     write_audit: bool = True               # JSON audit manifest sidecar (<output>_audit.json)
     threads: int = 0  # 0 = ffmpeg default (all cores)
     verify_labels: Optional[list] = None   # e.g. ["face"]: re-detect in the output and report uncovered hits
+    verify_enhance: str = "off"            # off | auto | always: verification detector on a boosted copy (vision/enhance.py); off, it reports amplified texture as faces
     start_s: float = 0.0                   # clip range (seconds); end_s None = to the end
     end_s: Optional[float] = None
     workers: int = 0                       # video encode workers: 0 = auto (parallel segments on long clips), 1 = single process
@@ -352,7 +353,7 @@ def _export_media(project: Project, opts: ExportOptions, info, src: str, out_pat
             from .verify import verify_output
             vr = verify_output(str(out_path), project, labels=list(opts.verify_labels),
                                progress=lambda p, m: prog(0.99 + 0.01 * p, m), cancel=cancel,
-                               frame_offset=f_start if info.has_video else 0)
+                               frame_offset=f_start if info.has_video else 0, enhance=opts.verify_enhance)
             result["verify"] = vr
             project.log("verify", f"{vr.frames_checked} frames checked, {vr.detections} detections, "
                                   f"{len(vr.uncovered)} uncovered")

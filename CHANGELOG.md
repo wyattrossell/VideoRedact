@@ -7,6 +7,8 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-11-03
+
 ### Added
 - **Redact the entire picture** (Video menu, Ctrl+Shift+R): one redaction that covers the whole
   picture, edge to edge, over a time range (default: from the playhead to the end), for footage

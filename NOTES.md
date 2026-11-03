@@ -437,6 +437,21 @@ samples/ (720p30 Axon clips), i7-14700T:
   Label Studio 1.23 installed at C:\dev\venv-labelstudio (bench\label.ps1).
   docs/UPGRADE_PLAN.md written; waiting for approval before changing the pipeline.
 
+- 2026-11-03: Wyatt's last edit before publishing 0.1.20: **every redaction box half again
+  bigger**, "to help with quick movements of the body camera". Done as the box margin
+  (`VideoTrack.pad`, a share of the box added on each side) 10 % -> 40 %: one constant
+  `model.DEFAULT_PAD`, the `video_pad` setting (migration rev 4 moves an untouched 10 % to
+  40 %, a chosen value stays) and the batch default; a saved project keeps each track's own
+  margin. Auto-detect no longer copies `face_pad` onto the track (the detector already dilates
+  faces by it and the app overrode the track value with `video_pad` anyway); batch mode now
+  applies `video_pad` like the app (it left objects at 10 % and faces at 25 %). Faces from
+  auto-detect therefore cover 1.5 x 1.8 = 2.7x the raw detection in each direction; the
+  outline the reviewer drags is still the box itself, the black area under it is what the
+  export covers. Bench: detection unchanged by construction and in the numbers (101 tracks /
+  18 013 track-frames); the laptop ran the detect stage 18 % slower today on the old code too
+  (A/B in the same hour), export 191 fps (bench/results/COMPARISON.md). Tests 134 passed,
+  3 skipped. Released as **0.1.20** (`installeruild.ps1 -Bump 0.1.20 -Publish`):
+  https://github.com/wyattrossell/VideoRedact/releases/tag/v0.1.20.
 - 2026-11-02 (pm): Wyatt's verdict on 0.1.19 the same afternoon, built as five commits for
   0.1.20 (unreleased): (1) **protected zone removed** ("faces can be seen, defeats the purpose";
   0.1.19 projects open without it, log `protected_zones_dropped`); (2) **blur back** (black /

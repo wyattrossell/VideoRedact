@@ -77,6 +77,21 @@ def test_apply_box_pad_covers_more_pixels(shape):
         assert frame[70, 70, 0] == 255                           # ellipse leaves the padded box's corner
 
 
+def test_default_margin_is_40_percent_each_side():
+    """0.1.20: every new box is half again bigger than in 0.1.19 (margin 10 % -> 40 % of the box on each side),
+    so a face stays covered through the quick pans a body camera makes. The number is one constant."""
+    from videoredact import paths
+    from videoredact.core.model import DEFAULT_PAD
+    from videoredact.core.batch import BatchOptions
+    assert DEFAULT_PAD == 0.40 == VideoTrack().pad == paths.DEFAULT_SETTINGS["video_pad"] == BatchOptions(files=[]).video_pad
+    t = VideoTrack(label="face", spans=[Span(0, 5, {0: BBox(0.4, 0.4, 0.2, 0.2)})], shape=Shape.RECT)
+    frame = np.full((100, 100, 3), 255, dtype=np.uint8)
+    video_redact.redact_frame(frame, [t], 2, VideoStyle.BLACK)
+    assert frame[32, 32, 0] == 0 and frame[67, 67, 0] == 0          # 32..68 covered: 1.8x the 40..60 box
+    assert frame[31, 31, 0] == 255 and frame[68, 68, 0] == 255
+    assert VideoTrack.from_dict({"id": "t1", "label": "face", "spans": [], "pad": 0.1}).pad == 0.1   # a saved project keeps its boxes
+
+
 def test_track_pad_used_when_rendering():
     t = VideoTrack(label="face", spans=[Span(0, 5, {0: BBox(0.4, 0.4, 0.2, 0.2)})], pad=0.25, shape=Shape.RECT)
     frame = np.full((100, 100, 3), 255, dtype=np.uint8)

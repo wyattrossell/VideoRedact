@@ -104,7 +104,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "detect_conf": 0.35,
     "face_conf": 0.5,
     "detect_classes": ["face", "screen", "document", "license_plate"],
-    "video_pad": 0.10,
+    "video_pad": 0.40,              # margin on each side of a new box as a share of its size (core/model.py DEFAULT_PAD; 0.10 before 0.1.20)
     "export_crf": 18,
     "export_preset": "veryfast",
     "cpu_threads": 0,               # 0 = auto
@@ -139,7 +139,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 
-SETTINGS_REV = 3   # bump with every entry added to Settings._migrate()
+SETTINGS_REV = 4   # bump with every entry added to Settings._migrate()
 
 
 class Settings(dict):
@@ -172,6 +172,12 @@ class Settings(dict):
             if self.get("last_box_style") == "pixelate":
                 self["last_box_style"] = None
             self["settings_rev"] = 3
+        if rev < 4:
+            # 0.1.20: every new box is half again bigger (margin 10 % -> 40 % of the box on each side).
+            # Installs that kept the old default move with it; a margin the user chose stays.
+            if abs(float(self.get("video_pad", 0.4) or 0.0) - 0.10) < 1e-6:
+                self["video_pad"] = DEFAULT_SETTINGS["video_pad"]
+            self["settings_rev"] = 4
         if rev < SETTINGS_REV:
             try:
                 self.save()

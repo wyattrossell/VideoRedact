@@ -39,6 +39,10 @@ integrated GPU get a speed-up automatically (the self-test prints "tier=intel").
    (default: stop after 8 s out of view). T re-tracks a selected box from the current frame.
    Watch the box follow the object and check the timeline lane shows the covered range as one
    piece, not flickering fragments.
+   Since 0.1.20 every box is rendered half again bigger than before (a 40 % margin on each side of
+   the box you drew or the detector found, 10 % until 0.1.19; Settings > Box margin) so a quick
+   camera move does not uncover a face. The outline you drag is still the box itself; the black
+   area under it shows what the export covers. Tell us if it now hides too much of the picture.
    Since 0.1.17 a box around a face (or phone, screen, document) uses a new engine: it checks
    the face detector around the box as it goes and recognises the same person when it finds the
    face again after a loss. One box should now cover the face for its whole time on screen.

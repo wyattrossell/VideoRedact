@@ -1366,6 +1366,7 @@ class MainWindow(QMainWindow):
                             verify=bool(settings.get("verify_export", True)), author=settings.get("author", ""),
                             default_video_style=settings.get("default_video_style", "black"),
                             default_audio_style=settings.get("default_audio_style", "beep"),
+                            video_pad=float(settings["video_pad"]),
                             crf=int(settings.get("export_crf", 23)), preset=settings.get("export_preset", "veryfast"),
                             detect_kwargs=dict(face_conf=settings["face_conf"], obj_conf=settings["detect_conf"],
                                                obj_model=settings.get("detector_model", "yolox_tiny"),

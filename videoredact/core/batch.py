@@ -18,7 +18,7 @@ from typing import Callable, Optional
 
 from .export import ExportOptions, export_project
 from .media import FrameReader, nearest_standard_rate, normalize_cfr, probe, sha256_file
-from .model import AudioStyle, Project, VideoStyle
+from .model import DEFAULT_PAD, AudioStyle, Project, VideoStyle
 
 ProgressCB = Callable[[float, str], None]
 CancelCB = Callable[[], bool]
@@ -38,6 +38,7 @@ class BatchOptions:
     crf: int = 23
     preset: str = "veryfast"
     detect_kwargs: dict = field(default_factory=dict)   # extra AutoDetectOptions fields
+    video_pad: float = DEFAULT_PAD           # margin of every box (VideoTrack.pad); the app passes its "video_pad" setting
     normalize_vfr: bool = True               # variable-rate files get a constant-rate working copy first (<stem>_CFR.mp4)
 
 
@@ -114,6 +115,7 @@ def run_batch(opts: BatchOptions, progress: Optional[ProgressCB] = None, cancel:
                     tracks = run_auto_detect(r, dopts, progress=lambda p, m: prog(0.05 + 0.6 * p, m),
                                              cancel=cancel)
                 for t in tracks:
+                    t.pad = opts.video_pad
                     proj.add_video_track(t)
                 res.tracks = len(tracks)
             out_dir = Path(opts.out_dir) if opts.out_dir else Path(f).parent

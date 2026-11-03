@@ -14,6 +14,12 @@ verbatim as its GitHub release notes (`scripts/bump_version.py --notes`). Write 
   audio is untouched. Adjust the range with the usual trim / extend / split keys.
 
 ### Changed
+- **Every new box is half again bigger.** The margin rendered around a drawn or detected box went
+  from 10 % to 40 % of the box on each side (1.8x its width and height, 1.2x before) so a face stays
+  covered through the quick pans a body camera makes. Settings > Box margin; an install that kept
+  the old default moves to the new one, a margin you chose stays. Boxes in a saved project keep the
+  margin they were saved with. Auto-detect, a drawn box and batch mode now use the same margin
+  (batch mode used to use 10 % for objects and 25 % for faces).
 - **Licence plates, round two.** The plate model now also searches a full-resolution crop of
   every detected vehicle, where a distant plate is several times bigger: on the bench clips the
   two visible plates went from 7 confident hits to 62 (bench/results/PLATES.md). A plate the

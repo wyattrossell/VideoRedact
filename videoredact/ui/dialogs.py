@@ -62,6 +62,9 @@ class SettingsDialog(QDialog):
         self.vpad.setRange(0, 100)
         self.vpad.setValue(int(settings["video_pad"] * 100))
         self.vpad.setSuffix(" %")
+        self.vpad.setToolTip("Extra margin on each side of every new box, as a share of the box's size. 40 % covers 1.8x the "
+                             "box's width and height (half again what 0.1.19 covered) so a face stays covered through a quick "
+                             "camera move. Boxes already in a project keep their own margin.")
         self.fpad = QSpinBox()
         self.fpad.setRange(0, 100)
         self.fpad.setValue(int(float(settings.get("face_pad", 0.25)) * 100))

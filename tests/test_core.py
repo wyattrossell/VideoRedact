@@ -153,6 +153,20 @@ def test_settings_default_language_and_migration(tmp_path, monkeypatch):
     assert paths.Settings()["language"] == "es"          # explicit choices are kept
 
 
+def test_settings_migration_moves_the_old_default_box_margin(tmp_path, monkeypatch):
+    """0.1.20: box margin 10 % -> 40 %. An install that kept the old default follows; a chosen value stays."""
+    from videoredact import paths
+    f = tmp_path / "settings.json"
+    monkeypatch.setattr(paths, "settings_path", lambda: f)
+    f.write_text(json.dumps({"settings_rev": 3, "video_pad": 0.10}), encoding="utf-8")
+    s = paths.Settings()
+    assert s["video_pad"] == 0.40 and s["settings_rev"] == paths.SETTINGS_REV
+    f.write_text(json.dumps({"settings_rev": 3, "video_pad": 0.2}), encoding="utf-8")
+    assert paths.Settings()["video_pad"] == 0.2
+    f.write_text(json.dumps({"settings_rev": paths.SETTINGS_REV, "video_pad": 0.10}), encoding="utf-8")
+    assert paths.Settings()["video_pad"] == 0.10                    # chosen after the move: kept
+
+
 def test_batch_unique_path_never_overwrites(tmp_path):
     from videoredact.core.batch import unique_path
     p = tmp_path / "clip.vrproj"

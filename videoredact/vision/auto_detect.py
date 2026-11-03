@@ -98,7 +98,7 @@ class AutoDetectOptions:
     plate_crops: bool = True   # also search a crop of every detected vehicle at full resolution (distant plates: 6 -> 62 confident hits on the bench)
     vehicle_conf: float = 0.35  # YOLOX score cut for the vehicle boxes that gate plates (0.2 let the patrol car's interior count as a vehicle and the laptop back in)
     plate_min_track_conf: float = 0.4   # average plate score a plate track needs (the gate, not the score, is the filter)
-    face_pad: float = 0.25     # dilation of face/head boxes (fraction of box size)
+    face_pad: float = 0.25     # dilation of face boxes at the detector (wrappers.HeadFallback); the track margin (VideoTrack.pad) applies on top
     face_shape: str = "ellipse"
     detector_cfg: Optional[dict] = None   # override for detectors.build()
     proxy_width: int = 1280    # decode a proxy this wide for detection when the source is larger (boxes are normalized)
@@ -485,9 +485,8 @@ def _detect_chunk(reader: FrameReader, opts: AutoDetectOptions, det,
             note += f", head-fallback on {L.fallback_hits} of {L.hits}"
         if L.hits == 1:
             note += " (single detection - review)"
-        t = VideoTrack(label=L.label, spans=[s], source="auto", note=note)
+        t = VideoTrack(label=L.label, spans=[s], source="auto", note=note)   # margin: VideoTrack.pad default
         if L.label in ("face", "head"):
-            t.pad = opts.face_pad
             t.shape = Shape.ELLIPSE if opts.face_shape == "ellipse" else Shape.RECT
         tracks.append(t)
     return link_fragments(tracks, int(opts.link_gap_s * fps))

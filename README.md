@@ -33,6 +33,8 @@ ordinary Windows PC (no GPU required). MIT licensed.
   left visible are listed with timestamps before you release the file.
 - Fix a track by dragging its box; the correction becomes a keyframe.
 - Styles per region: solid black box, solid blue box or heavy blur; rectangle, ellipse or rounded.
+- Every box is rendered with a 40 % margin on each side (1.8x the drawn or detected box; Settings >
+  Box margin) so a face stays covered through the quick moves a body camera makes.
 
 **Evidence handling**
 - Preview is a faithful rendering of the export (same code path).

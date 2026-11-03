@@ -243,6 +243,10 @@ class Span:
 
 
 FULL_FRAME_LABEL = "entire picture"   # a track that covers the whole picture over a time range (see full_frame_track)
+DEFAULT_PAD = 0.40   # margin on each side of a box as a share of its size: the covered area is 1.8x the box's width
+                     # and height. 0.10 until 0.1.19; half again bigger since 0.1.20 so a face stays covered through the
+                     # quick pans a body camera makes (Wyatt, 2026-11-03). The "video_pad" setting is the same number
+                     # for new boxes; every track stores its own, so a saved project renders exactly as it did.
 
 
 @dataclass
@@ -251,7 +255,7 @@ class VideoTrack:
     spans: list[Span] = field(default_factory=list)
     style: Optional[VideoStyle] = None  # None -> project default
     shape: Shape = Shape.RECT
-    pad: float = 0.10                  # extra margin as fraction of box size
+    pad: float = DEFAULT_PAD           # extra margin as fraction of box size on each side (DEFAULT_PAD)
     source: str = "manual"             # manual | tracked | auto
     enabled: bool = True
     id: str = field(default_factory=new_id)
